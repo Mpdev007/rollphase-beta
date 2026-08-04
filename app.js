@@ -506,12 +506,20 @@ function gymCardHTML(g, sport) {
     .slice(0, 3)
     .map((id) => sportMeta(id)?.short || id)
     .join(" · ");
+  const agg =
+    typeof ReviewSystem !== "undefined"
+      ? ReviewSystem.aggregateRating(g.id, focus || null)
+      : null;
+  const ratingHtml = agg
+    ? `<div class="rating-pill"><span class="stars">${ReviewSystem.starsHtml(agg.overall)}</span> ${agg.overall} · ${agg.count}</div>`
+    : "";
   return `
     <article class="card" data-gym="${g.id}">
       <div class="card-top">
         <div>
           <div class="card-title">${escapeHtml(g.name)}</div>
           <div class="card-meta">${next ? escapeHtml(next) : escapeHtml(g.hours)}</div>
+          ${ratingHtml}
         </div>
         <div class="dist">${g.mi} mi</div>
       </div>
@@ -520,6 +528,7 @@ function gymCardHTML(g, sport) {
         ${!focus ? `<span class="tag-pill accent">${escapeHtml(sportLabels)}</span>` : ""}
         ${tags.map((t) => `<span class="tag-pill accent">${escapeHtml(t)}</span>`).join("")}
         ${here ? `<span class="tag-pill live">${here} here</span>` : ""}
+        ${(agg?.topTags || []).slice(0, 2).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}
       </div>
     </article>`;
 }
@@ -727,15 +736,28 @@ function renderCheckinBar() {
       </div>
       <button type="button" class="btn-ghost" id="checkoutBtn">Check out</button>`;
     $("#checkoutBtn")?.addEventListener("click", () => {
+      const gymId = state.checkedInGym;
+      const sport = focusId();
+      if (typeof ReviewSystem !== "undefined" && gymId) {
+        ReviewSystem.recordVisit(gymId, sport);
+      }
       state.checkedInGym = null;
       safeRenderAll();
+      // High-ROI: prompt rate after real visit
+      if (gymId && confirm("Rate this venue for other athletes? (visit-verified)")) {
+        openGymDetail(gymId);
+        setTimeout(() => {
+          document.querySelector('.detail-tab[data-panel="reviews"]')?.click();
+          document.getElementById("writeReviewBtn")?.click();
+        }, 80);
+      }
     });
   } else {
     bar.classList.remove("live");
     bar.innerHTML = `
       <div>
         <div class="checkin-title">Not checked in</div>
-        <div class="checkin-sub">Optional — check in when you arrive</div>
+        <div class="checkin-sub">Check in → train → rate (trusted reviews)</div>
       </div>
       <button type="button" class="btn-ghost" id="quickCheckin">Browse venues</button>`;
     $("#quickCheckin")?.addEventListener("click", () => switchTab("gyms"));
@@ -766,6 +788,168 @@ function renderGyms() {
   }
 }
 
+function mapsSearchUrl(gymName) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(gymName)}`;
+}
+
+function renderReviewsPanel(gymId, sport) {
+  if (typeof ReviewSystem === "undefined") {
+    return empty("Ratings loading…", "Refresh if this persists.");
+  }
+  const RS = ReviewSystem;
+  const agg = RS.aggregateRating(gymId, sport);
+  const list = RS.reviewsForGym(gymId, sport);
+  const verified = sport ? RS.hasVisit(gymId, sport) : RS.hasVisit(gymId);
+  const tags = RS.SPORT_REVIEW_TAGS[sport] || ["Traveler-friendly", "Great coaching", "Clean facility", "Worth drop-in"];
+
+  const summary = agg
+    ? `
+    <div class="rating-summary">
+      <div>
+        <div class="rating-big">${agg.overall}</div>
+        <div class="stars" style="color:#f5c542">${RS.starsHtml(agg.overall)}</div>
+      </div>
+      <div class="rating-meta">
+        <strong style="color:var(--text)">${agg.count} RollPhase review${agg.count === 1 ? "" : "s"}</strong><br/>
+        ${agg.verifiedCount} visit-verified<br/>
+        ${sport ? `Scoped to ${escapeHtml(sportMeta(sport)?.short || sport)}` : "All sports at this venue"}
+      </div>
+    </div>
+    ${RS.REVIEW_DIMENSIONS.map((d) => {
+      const v = agg.dimensions[d.id];
+      if (v == null) return "";
+      return `<div class="dim-row"><span>${escapeHtml(d.label)}</span><span class="stars">${RS.starsHtml(v)} ${v.toFixed(1)}</span></div>`;
+    }).join("")}
+    <div class="card-tags" style="margin:12px 0">${(agg.topTags || []).map((t) => `<span class="tag-pill accent">${escapeHtml(t)}</span>`).join("")}</div>
+  `
+    : empty("No RollPhase reviews yet", "Be the first after you train here.");
+
+  const reviewsHtml = list.length
+    ? list
+        .map(
+          (r) => `
+      <article class="review-card">
+        <div class="who">${escapeHtml(r.author)}${r.verifiedVisit ? '<span class="verified-badge">Visit verified</span>' : ""}</div>
+        <div class="when">${escapeHtml(sportMeta(r.sport)?.short || r.sport)} · ${RS.starsHtml(r.scores?.overall)} · ${new Date(r.at).toLocaleDateString()}</div>
+        <div class="card-tags" style="margin-top:6px">${(r.tags || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div>
+        ${r.text ? `<div class="body">${escapeHtml(r.text)}</div>` : ""}
+      </article>`
+        )
+        .join("")
+    : "";
+
+  return `
+    ${summary}
+    <button type="button" class="btn-primary" id="writeReviewBtn">Rate this venue</button>
+    <p class="muted small" style="margin:8px 0 12px">${
+      verified
+        ? "You’ve checked in here — your review can be visit-verified."
+        : "Tip: check in when you train so reviews carry a visit badge (higher trust)."
+    }</p>
+    <div id="rateFormHost" class="hidden rate-form"></div>
+    <h4 class="rep-section-title">From athletes on RollPhase</h4>
+    ${reviewsHtml}
+    <h4 class="rep-section-title">Outside the app</h4>
+    <p class="outside-note">We keep Google/Yelp noise out of the main score. Use Maps for directions &amp; public hours — use RollPhase for sport-specific athlete signal.</p>
+    <div class="ext-links">
+      <a href="${mapsSearchUrl(GYMS.find((x) => x.id === gymId)?.name || "")}" target="_blank" rel="noopener">Open in Google Maps</a>
+      <button type="button" class="linkish" id="copyVenueShare">Copy share link for non-app friends</button>
+    </div>
+  `;
+}
+
+function bindRateForm(gymId, sport) {
+  const host = $("#rateFormHost");
+  const btn = $("#writeReviewBtn");
+  if (!host || !btn || typeof ReviewSystem === "undefined") return;
+  const RS = ReviewSystem;
+  const tags = RS.SPORT_REVIEW_TAGS[sport] || ["Traveler-friendly", "Great coaching", "Clean facility"];
+
+  btn.addEventListener("click", () => {
+    host.classList.remove("hidden");
+    host.innerHTML = `
+      <p class="muted small">Structured ratings stay scannable. One review per sport here (you can edit later in production).</p>
+      ${RS.REVIEW_DIMENSIONS.map(
+        (d) => `
+        <div class="dim-row" style="border:none;flex-direction:column;align-items:flex-start">
+          <span>${escapeHtml(d.label)}</span>
+          <div class="star-pick" data-dim="${d.id}">
+            ${[1, 2, 3, 4, 5]
+              .map((n) => `<button type="button" class="star-btn ${n <= 5 && d.id === "overall" && n <= 5 ? "" : ""}" data-n="${n}">★</button>`)
+              .join("")}
+          </div>
+        </div>`
+      ).join("")}
+      <p class="muted small">Quick tags</p>
+      <div id="rateTags">${tags.map((t) => `<button type="button" class="tag-toggle" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("")}</div>
+      <p class="muted small" style="margin-top:10px">What stood out? (optional, keep short)</p>
+      <textarea id="rateText" maxlength="280" placeholder="e.g. Open mat is welcoming, mats are clean…"></textarea>
+      <button type="button" class="btn-primary" id="rateSubmit" style="margin-top:10px">Post to RollPhase</button>
+    `;
+
+    const scores = { overall: 5, coaching: 4, facility: 4, community: 4, value: 4 };
+    host.querySelectorAll(".star-pick").forEach((row) => {
+      const dim = row.dataset.dim;
+      const paint = () => {
+        row.querySelectorAll(".star-btn").forEach((b) => {
+          b.classList.toggle("on", +b.dataset.n <= scores[dim]);
+        });
+      };
+      paint();
+      row.addEventListener("click", (e) => {
+        const b = e.target.closest(".star-btn");
+        if (!b) return;
+        scores[dim] = +b.dataset.n;
+        paint();
+      });
+    });
+
+    const selected = new Set();
+    host.querySelectorAll(".tag-toggle").forEach((t) => {
+      t.addEventListener("click", () => {
+        const tag = t.dataset.tag;
+        if (selected.has(tag)) {
+          selected.delete(tag);
+          t.classList.remove("on");
+        } else {
+          selected.add(tag);
+          t.classList.add("on");
+        }
+      });
+    });
+
+    $("#rateSubmit")?.addEventListener("click", () => {
+      const author = state.profile.displayName || "You";
+      const verified = RS.hasVisit(gymId, sport);
+      RS.upsertUserReview({
+        id: `ur_${Date.now()}`,
+        gymId,
+        sport,
+        author,
+        verifiedVisit: verified,
+        scores: { ...scores },
+        tags: [...selected],
+        text: ($("#rateText")?.value || "").trim().slice(0, 280),
+        at: new Date().toISOString(),
+      });
+      openGymDetail(gymId);
+      setTimeout(() => document.querySelector('.detail-tab[data-panel="reviews"]')?.click(), 50);
+    });
+  });
+
+  $("#copyVenueShare")?.addEventListener("click", () => {
+    const g = GYMS.find((x) => x.id === gymId);
+    const agg = RS.aggregateRating(gymId, sport);
+    const line = `${g?.name} on RollPhase${agg ? ` · ${agg.overall}★ (${agg.count} athlete reviews)` : ""} — ${location.origin}${location.pathname}#gym=${gymId}`;
+    try {
+      navigator.clipboard?.writeText(line);
+      alert("Copied share blurb for friends (app or not).");
+    } catch {
+      prompt("Copy this:", line);
+    }
+  });
+}
+
 function openGymDetail(id) {
   const g = GYMS.find((x) => x.id === id);
   if (!g) return;
@@ -775,11 +959,18 @@ function openGymDetail(id) {
   const here = g.here[sport] || [];
   const promo = g.promo?.[sport];
   const social = g.social || {};
+  const agg =
+    typeof ReviewSystem !== "undefined" ? ReviewSystem.aggregateRating(g.id, sport) : null;
 
   $("#gymDetailBody").innerHTML = `
     <div class="detail-hero">
       <h2>${escapeHtml(g.name)}</h2>
       <div class="card-meta">${g.mi} mi · ${g.open ? "Open now" : "Closed"} · ${escapeHtml(g.hours)}</div>
+      ${
+        agg
+          ? `<div class="rating-pill" style="margin-top:6px"><span class="stars">${ReviewSystem.starsHtml(agg.overall)}</span> ${agg.overall} · ${agg.count} RollPhase reviews</div>`
+          : ""
+      }
       <div class="card-tags" style="margin-top:10px">
         ${g.sports.map((sid) => `<span class="tag-pill accent">${escapeHtml(sportMeta(sid)?.short || sid)}</span>`).join("")}
         ${tags.map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}
@@ -787,6 +978,7 @@ function openGymDetail(id) {
     </div>
     <div class="detail-tabs">
       <button type="button" class="detail-tab active" data-panel="overview">Overview</button>
+      <button type="button" class="detail-tab" data-panel="reviews">Reviews</button>
       <button type="button" class="detail-tab" data-panel="schedule">Schedule</button>
       <button type="button" class="detail-tab" data-panel="here">Here now</button>
       <button type="button" class="detail-tab" data-panel="social">Social</button>
@@ -794,13 +986,22 @@ function openGymDetail(id) {
     <div class="detail-panel active" data-panel="overview">
       <div class="row-line"><span>Next</span><span>${escapeHtml(g.next[sport] || "—")}</span></div>
       <div class="row-line"><span>Sports</span><span>${g.sports.map((x) => sportMeta(x)?.short || x).join(", ")}</span></div>
+      ${
+        agg
+          ? `<div class="row-line"><span>Athletes say</span><span>${escapeHtml((agg.topTags || []).slice(0, 2).join(" · ") || "—")}</span></div>`
+          : ""
+      }
       <button type="button" class="btn-primary" id="checkInHere">Check in${s ? ` · ${escapeHtml(s.short)}` : ""}</button>
       <button type="button" class="btn-ghost" id="followGym" style="width:100%;margin-top:8px;padding:12px">Follow gym · social feed</button>
+      <button type="button" class="btn-ghost" id="jumpReviews" style="width:100%;margin-top:8px;padding:12px">See athlete reviews</button>
       ${
         sport && !profileSports().some((ps) => ps.id === sport)
           ? `<button type="button" class="btn-ghost" id="addSportFromGym" style="width:100%;margin-top:8px;padding:12px">Add ${escapeHtml(s?.short || "sport")} to my profile</button>`
           : ""
       }
+    </div>
+    <div class="detail-panel" data-panel="reviews">
+      ${renderReviewsPanel(g.id, sport)}
     </div>
     <div class="detail-panel" data-panel="schedule">
       <div class="row-line"><span>Today</span><span>${escapeHtml(g.next[sport] || "Nothing listed")}</span></div>
@@ -831,6 +1032,9 @@ function openGymDetail(id) {
             `<p class="muted small" style="margin-top:12px">Following pulls posts into your Feed via webhooks.</p>`
           : empty("No linked socials", "Gym can connect IG / FB later.")
       }
+      <div class="ext-links">
+        <a href="${mapsSearchUrl(g.name)}" target="_blank" rel="noopener">Directions · Google Maps</a>
+      </div>
     </div>
   `;
 
@@ -843,9 +1047,14 @@ function openGymDetail(id) {
       $(`.detail-panel[data-panel="${btn.dataset.panel}"]`)?.classList.add("active");
     });
   });
+  bindRateForm(g.id, sport);
+  $("#jumpReviews")?.addEventListener("click", () => {
+    document.querySelector('.detail-tab[data-panel="reviews"]')?.click();
+  });
   $("#checkInHere")?.addEventListener("click", () => {
     state.checkedInGym = g.id;
     if (sport) applySkin(sport, { flash: false });
+    if (typeof ReviewSystem !== "undefined") ReviewSystem.recordVisit(g.id, sport);
     switchTab("home");
   });
   $("#followGym")?.addEventListener("click", (e) => {
@@ -1354,6 +1563,31 @@ function renderProfile() {
   const repHost = $("#representFields");
   if (repHost) {
     renderRepresentStudio(repHost);
+  }
+
+  const myRev = $("#myReviews");
+  if (myRev && typeof ReviewSystem !== "undefined") {
+    const list = ReviewSystem.myReviews(state.profile.displayName || "You");
+    // also show if author is Vlad from seed-like user posts
+    const allMine = ReviewSystem.loadUserReviews().filter(
+      (r) => r.author === (state.profile.displayName || "You") || r.author === "Vlad"
+    );
+    const rows = allMine.length ? allMine : list;
+    myRev.innerHTML = rows.length
+      ? rows
+          .map((r) => {
+            const g = GYMS.find((x) => x.id === r.gymId);
+            return `<div class="review-card" style="cursor:pointer" data-gym="${r.gymId}">
+              <div class="who">${escapeHtml(g?.name || r.gymId)}${r.verifiedVisit ? '<span class="verified-badge">Visit verified</span>' : ""}</div>
+              <div class="when">${escapeHtml(sportMeta(r.sport)?.short || "")} · ${ReviewSystem.starsHtml(r.scores?.overall)}</div>
+              ${r.text ? `<div class="body">${escapeHtml(r.text)}</div>` : ""}
+            </div>`;
+          })
+          .join("")
+      : `<p class="muted small">No reviews yet. Check in at a gym, train, check out → rate. That builds trusted signal for other athletes.</p>`;
+    myRev.querySelectorAll("[data-gym]").forEach((el) => {
+      el.addEventListener("click", () => openGymDetail(el.dataset.gym));
+    });
   }
 
   const socialHost = $("#socialFields");
