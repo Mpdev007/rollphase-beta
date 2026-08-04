@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <title>RollPhase Beta — Multi-sport training companion (prototype)</title>
+  <meta name="description" content="RollPhase closed beta prototype — multi-sport gyms, partners, feed, and personalization. Not the production app." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="skins.css" />
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="metalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#f2f4f8"/>
+        <stop offset="35%" stop-color="#a8b0c0"/>
+        <stop offset="70%" stop-color="#6a7388"/>
+        <stop offset="100%" stop-color="#d8dce6"/>
+      </linearGradient>
+      <filter id="glyphDepth" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#000" flood-opacity="0.55"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <div class="stage">
+    <aside class="stage-note">
+      <img src="assets/logo.jpg" alt="RollPhase" class="stage-logo" />
+      <h1>RollPhase</h1>
+      <p class="tag">v4 · multi-sport · custom represent · Nix</p>
+      <ul>
+        <li><strong>Sport skins</strong> stay generic — never a hard-coded club brand.</li>
+        <li><strong>I represent…</strong> upload logo, crop, free colors, Nix analyze.</li>
+        <li><strong>Nix</strong> = on-device LLM for palette/skin (local endpoint optional).</li>
+        <li>Focus sport is optional — yoga today, boxing tomorrow.</li>
+      </ul>
+      <div class="skin-swatches" id="skinSwatches" title="Jump to sport skin"></div>
+    </aside>
+
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen" id="phoneRoot" data-sport="explore">
+        <div class="ambient" aria-hidden="true"><div class="ambient-grain"></div></div>
+        <div class="app-layer">
+          <header class="status-bar">
+            <span class="time" id="clock">9:41</span>
+            <span class="status-icons">●●● ▌▌ 🔋</span>
+          </header>
+
+          <div class="app-header">
+            <div class="brand-row">
+              <img src="assets/logo.jpg" alt="" class="brand-mark" />
+              <div>
+                <div class="brand-name">RollPhase</div>
+                <div class="brand-sub"><span class="vibe" id="headerVibe">Mat culture</span></div>
+              </div>
+            </div>
+            <button type="button" class="sport-chip" id="sportChip" aria-label="Focus sport (optional)">
+              <img class="sport-chip-icon" id="sportChipIcon" src="assets/sports/bjj.jpg" alt="" />
+              <span id="sportLabel">Explore</span>
+              <span class="chev">▾</span>
+            </button>
+          </div>
+
+          <!-- Profile-level “I represent…” — vibe only, never club trademarks -->
+          <div class="represent-strip" id="representStrip" data-rep="none" aria-label="Representing">
+            <div class="rep-swatch" id="repSwatch" aria-hidden="true"></div>
+            <div class="rep-names">
+              <strong id="repLabel">Representing</strong>
+              <span id="repSub">Choose club vibe in Profile</span>
+            </div>
+            <button type="button" class="rep-edit tab-jump" data-tab="profile">Edit</button>
+          </div>
+
+          <main class="screens">
+            <!-- HOME — multi-sport, never forced -->
+            <section class="screen active" data-screen="home" id="screen-home">
+              <div class="home-welcome" id="homeWelcome"></div>
+
+              <!-- Your sports (profile) OR discover rail (no forced pick) -->
+              <div class="module" id="homeSportsModule">
+                <div class="module-head">
+                  <h3 id="homeSportsTitle">Your sports</h3>
+                  <button type="button" class="text-btn" id="browseAllSports">Browse all</button>
+                </div>
+                <div class="h-scroll sport-rail" id="homeSportRail"></div>
+                <p class="hint" id="homeSportsHint" style="margin-top:8px"></p>
+              </div>
+
+              <div class="sport-hero" id="sportHero">
+                <div class="sport-hero-copy">
+                  <div class="kicker" id="heroKicker">Today’s focus</div>
+                  <h3 id="heroTitle">Pick a vibe for today</h3>
+                  <p id="heroBlurb">Yoga today, boxing tomorrow — nothing is locked. Tap a sport above or browse all.</p>
+                </div>
+                <img id="heroIcon" src="assets/logo.jpg" alt="" />
+              </div>
+
+              <div class="roi-note" id="roiNote"></div>
+
+              <div class="section-head">
+                <h2 id="homeTitle">Near you</h2>
+                <button type="button" class="text-btn" id="toggleTrain">Open to train · On</button>
+              </div>
+
+              <div class="checkin-bar" id="checkinBar"></div>
+
+              <div class="module" data-module="events">
+                <div class="module-head">
+                  <h3 id="eventsModuleTitle">Upcoming</h3>
+                  <button type="button" class="text-btn tab-jump" data-tab="feed">Full feed</button>
+                </div>
+                <div id="homeEvents"></div>
+              </div>
+
+              <div class="module" data-module="gyms">
+                <div class="module-head">
+                  <h3 id="gymsModuleTitle">Nearby venues</h3>
+                  <button type="button" class="text-btn tab-jump" data-tab="gyms">See all</button>
+                </div>
+                <div class="card-stack" id="homeGyms"></div>
+              </div>
+
+              <div class="module" data-module="partners">
+                <div class="module-head">
+                  <h3 id="partnersModuleTitle">Partners open now</h3>
+                  <button type="button" class="text-btn tab-jump" data-tab="partners">Match</button>
+                </div>
+                <div class="h-scroll" id="homePartners"></div>
+              </div>
+            </section>
+
+            <!-- GYMS -->
+            <section class="screen" data-screen="gyms" id="screen-gyms">
+              <div class="section-head">
+                <h2 id="gymsTitle">Gyms</h2>
+                <div class="seg" id="gymViewSeg">
+                  <button type="button" class="seg-btn active" data-view="list">List</button>
+                  <button type="button" class="seg-btn" data-view="map">Map</button>
+                </div>
+              </div>
+              <div class="filter-row" id="gymFilters"></div>
+              <div id="gymList" class="list"></div>
+              <div id="gymMap" class="map-mock hidden">
+                <div class="map-grid"></div>
+                <div class="map-pins" id="mapPins"></div>
+                <p class="map-caption">Map mock · PostGIS in production</p>
+              </div>
+            </section>
+
+            <section class="screen detail" data-screen="gym-detail" id="screen-gym-detail">
+              <button type="button" class="back-btn" id="gymBack">‹ Gyms</button>
+              <div id="gymDetailBody"></div>
+            </section>
+
+            <!-- PARTNERS -->
+            <section class="screen" data-screen="partners" id="screen-partners">
+              <div class="section-head">
+                <h2 id="partnersTitle">Partners</h2>
+                <span class="badge-soft" id="agePoolBadge">Adult pool</span>
+              </div>
+              <p class="hint" id="partnerHint"></p>
+              <div class="filter-row" id="partnerFilters"></div>
+              <div id="partnerList" class="list"></div>
+            </section>
+
+            <!-- FEED -->
+            <section class="screen" data-screen="feed" id="screen-feed">
+              <div class="section-head">
+                <h2 id="feedTitle">Feed</h2>
+                <div class="seg" id="feedSeg">
+                  <button type="button" class="seg-btn active" data-feed="events">Events</button>
+                  <button type="button" class="seg-btn" data-feed="live">Live</button>
+                  <button type="button" class="seg-btn" data-feed="social">Social</button>
+                </div>
+              </div>
+              <p class="hint" id="feedHint"></p>
+              <div id="feedBody" class="list"></div>
+            </section>
+
+            <!-- PROFILE -->
+            <section class="screen" data-screen="profile" id="screen-profile">
+              <div class="profile-hero">
+                <div class="avatar">VL</div>
+                <div>
+                  <h2>Vlad</h2>
+                  <p class="muted">Austin area · Adult</p>
+                </div>
+              </div>
+
+              <div class="card static">
+                <h3>Your sports</h3>
+                <div class="sport-tags" id="profileSports"></div>
+              </div>
+
+              <div class="card static">
+                <h3>I represent…</h3>
+                <div id="representFields"></div>
+              </div>
+
+              <div class="card static">
+                <h3>Social profiles</h3>
+                <p class="muted small">Linked accounts power follow-graph feeds (gyms you follow → posts here).</p>
+                <div class="social-fields" id="socialFields"></div>
+              </div>
+
+              <div class="card static">
+                <h3>Following</h3>
+                <div id="followingList"></div>
+              </div>
+
+              <div class="card static">
+                <h3>Data webhooks</h3>
+                <p class="muted small">Intelligent retrieval endpoints (mock). Production = Edge Functions + RLS.</p>
+                <div id="webhookList"></div>
+              </div>
+
+              <div class="card static">
+                <h3>Gear (this sport)</h3>
+                <div class="seg" id="gearSeg" style="margin:10px 0">
+                  <button type="button" class="seg-btn active" data-gear="shops">Shops</button>
+                  <button type="button" class="seg-btn" data-gear="needs">Needs</button>
+                </div>
+                <div id="gearShops" class="list"></div>
+                <div id="gearNeeds" class="list hidden"></div>
+              </div>
+
+              <div class="card static">
+                <h3>Privacy</h3>
+                <label class="toggle-row"><span>Open to train</span><input type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Show in “here now”</span><input type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Event push notifications</span><input type="checkbox" checked /></label>
+              </div>
+
+              <div class="card static warn">
+                <h3>Teen safety (demo)</h3>
+                <p class="small" style="margin-bottom:10px">Partner pool isolation.</p>
+                <div class="seg" id="ageDemo">
+                  <button type="button" class="seg-btn active" data-age="adult">Adult</button>
+                  <button type="button" class="seg-btn" data-age="teen">Teen 16–17</button>
+                </div>
+              </div>
+            </section>
+          </main>
+
+          <div class="overlay hidden" id="sportPicker">
+            <div class="sheet">
+              <div class="sheet-handle"></div>
+              <h2>Select sport</h2>
+              <p class="sheet-sub">Full skins · full feed on flagship sports · templates elsewhere.</p>
+              <input type="search" id="sportSearch" placeholder="Search sports…" autocomplete="off" />
+              <div class="sport-grid" id="sportGrid"></div>
+              <p class="sheet-foot">21 sports · pick one → whole UI reskins</p>
+            </div>
+          </div>
+
+          <nav class="tab-bar" aria-label="Main">
+            <button type="button" class="tab active" data-tab="home">
+              <span class="tab-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" filter="url(#glyphDepth)"><path class="glyph-face" fill="url(#metalGrad)" d="M4.5 10.5 12 4l7.5 6.5V20a1 1 0 0 1-1 1h-4.5v-5.5h-4V21H5.5a1 1 0 0 1-1-1v-9.5z"/></svg>
+              </span>
+              <span>Home</span>
+            </button>
+            <button type="button" class="tab" data-tab="gyms">
+              <span class="tab-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" filter="url(#glyphDepth)">
+                  <path class="glyph-face" fill="url(#metalGrad)" d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/>
+                </svg>
+              </span>
+              <span>Gyms</span>
+            </button>
+            <button type="button" class="tab" data-tab="partners">
+              <span class="tab-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" filter="url(#glyphDepth)">
+                  <path class="glyph-face" fill="url(#metalGrad)" d="M8.5 13a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 8.5 13zm7 0a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 15.5 13zM8.5 14.5c-2.8 0-8 1.4-8 4.2V21h10v-2.3c0-1.2.5-2.2 1.3-3-.9-.1-1.7-.2-3.3-.2zm7 0c-.5 0-1 0-1.5.1 1.2.8 2 2 2 3.6V21H23v-2.3c0-2.8-5.2-4.2-7.5-4.2z"/>
+                </svg>
+              </span>
+              <span>Partners</span>
+            </button>
+            <button type="button" class="tab" data-tab="feed">
+              <span class="tab-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" filter="url(#glyphDepth)">
+                  <path class="glyph-face" fill="url(#metalGrad)" d="M4 5h16v3H4V5zm0 5.5h16v3H4v-3zM4 16h10v3H4v-3z"/>
+                </svg>
+              </span>
+              <span>Feed</span>
+            </button>
+            <button type="button" class="tab" data-tab="profile">
+              <span class="tab-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" filter="url(#glyphDepth)">
+                  <path class="glyph-face" fill="url(#metalGrad)" d="M12 12a4.5 4.5 0 1 0-4.5-4.5A4.5 4.5 0 0 0 12 12zm0 2c-3.6 0-10 1.8-10 5.4V22h20v-2.6C22 15.8 15.6 14 12 14z"/>
+                </svg>
+              </span>
+              <span>Profile</span>
+            </button>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="beta.js"></script>
+  <script src="data.js"></script>
+  <script src="nix-client.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
