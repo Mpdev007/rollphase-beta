@@ -1,6 +1,7 @@
-﻿# RollPhase beta (GitHub Pages)
+﻿# RollPhase
 
-**Full monorepo (docs + handoff):** https://github.com/Mpdev007/rollphase  
-**Start here for agents:** https://github.com/Mpdev007/rollphase/blob/master/SESSION_HANDOFF.md  
-**Live:** https://mpdev007.github.io/rollphase-beta/
+Train near you. Every sport. Your people.
 
+**Live beta:** https://mpdev007.github.io/rollphase-beta/
+
+Closed beta — explore gyms, partners, events, ratings, and your profile.

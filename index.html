@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-  <title>RollPhase Beta — Multi-sport training companion (prototype)</title>
-  <meta name="description" content="RollPhase closed beta prototype — multi-sport gyms, partners, feed, and personalization. Not the production app." />
+  <title>RollPhase — Train near you</title>
+  <meta name="description" content="RollPhase helps athletes find gyms, training partners, events, and gear across every sport — closed beta." />
   <meta name="robots" content="noindex, nofollow" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -30,14 +30,14 @@
     <aside class="stage-note">
       <img src="assets/logo.jpg" alt="RollPhase" class="stage-logo" />
       <h1>RollPhase</h1>
-      <p class="tag">v4 · multi-sport · custom represent · Nix</p>
+      <p class="tag">Every sport · near you · your people</p>
       <ul>
-        <li><strong>Sport skins</strong> stay generic — never a hard-coded club brand.</li>
-        <li><strong>I represent…</strong> upload logo, crop, free colors, Nix analyze.</li>
-        <li><strong>Nix</strong> = on-device LLM for palette/skin (local endpoint optional).</li>
-        <li>Focus sport is optional — yoga today, boxing tomorrow.</li>
+        <li><strong>Find gyms</strong> — hours, specialties, who’s training now.</li>
+        <li><strong>Match partners</strong> at your level for the sport you care about.</li>
+        <li><strong>Events &amp; rates</strong> — know where to go and what’s worth it.</li>
+        <li><strong>Multi-sport</strong> — focus today or explore freely.</li>
       </ul>
-      <div class="skin-swatches" id="skinSwatches" title="Jump to sport skin"></div>
+      <div class="skin-swatches" id="skinSwatches" title="Jump to a sport"></div>
     </aside>
 
     <div class="phone">
@@ -147,7 +147,7 @@
               <div id="gymMap" class="map-mock hidden">
                 <div class="map-grid"></div>
                 <div class="map-pins" id="mapPins"></div>
-                <p class="map-caption">Map mock · PostGIS in production</p>
+                <p class="map-caption">Map view · list is the same results</p>
               </div>
             </section>
 
@@ -219,8 +219,8 @@
               </div>
 
               <div class="card static">
-                <h3>Data webhooks</h3>
-                <p class="muted small">Intelligent retrieval endpoints (mock). Production = Edge Functions + RLS.</p>
+                <h3>Connected sources</h3>
+                <p class="muted small">Calendars and pages you follow can surface here later. Optional for beta.</p>
                 <div id="webhookList"></div>
               </div>
 
@@ -256,10 +256,10 @@
             <div class="sheet">
               <div class="sheet-handle"></div>
               <h2>Select sport</h2>
-              <p class="sheet-sub">Full skins · full feed on flagship sports · templates elsewhere.</p>
+              <p class="sheet-sub">Pick a sport for today, or explore all. Add favorites on your profile anytime.</p>
               <input type="search" id="sportSearch" placeholder="Search sports…" autocomplete="off" />
               <div class="sport-grid" id="sportGrid"></div>
-              <p class="sheet-foot">21 sports · pick one → whole UI reskins</p>
+              <p class="sheet-foot">Search, pick a focus, or explore all sports</p>
             </div>
           </div>
 

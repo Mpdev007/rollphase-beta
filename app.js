@@ -211,8 +211,8 @@ function applyRepresentStrip() {
     }
     if ($("#repLabel")) $("#repLabel").textContent = rep.label?.trim() || "Representing";
     if ($("#repSub")) {
-      const src = rep.nix?.source === "nix" ? "Nix skin" : rep.logoDataUrl ? "Custom logo" : "Custom colors";
-      $("#repSub").textContent = `${src} · profile only`;
+      const src = rep.logoDataUrl ? "Custom crest" : "Custom colors";
+      $("#repSub").textContent = `${src} · your profile`;
     }
   } catch (e) {
     console.warn("represent strip", e);
@@ -546,7 +546,7 @@ function eventCardHTML(e) {
         </div>
       </div>
       <div class="notify-row">
-        <span class="small muted">via ${escapeHtml(e.source || "feed")}</span>
+        <span class="small muted">${e.live ? "Live now" : "Upcoming"}</span>
         <button type="button" class="notify-btn ${on ? "on" : ""}" data-notify="${e.id}">${on ? "Notify on" : "Notify me"}</button>
       </div>
     </article>`;
@@ -632,19 +632,19 @@ function renderHomeWelcome() {
       .join(" · ");
     el.innerHTML = `
       <div class="demo-banner" id="demoBanner">
-        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">Demo: multi-sport profile</button>
-        <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Demo: guest / no sports</button>
+        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports profile</button>
+        <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Just exploring</button>
       </div>
       <h2>Hey ${escapeHtml(name)}</h2>
-      <p>Your sports: ${escapeHtml(list)}. Focus one for today or stay open — yoga tomorrow is always fine.</p>`;
+      <p>Your sports: ${escapeHtml(list)}. Focus one for today or stay open — switch anytime.</p>`;
   } else {
     el.innerHTML = `
       <div class="demo-banner" id="demoBanner">
-        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">Demo: multi-sport profile</button>
-        <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Demo: guest / no sports</button>
+        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports profile</button>
+        <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Just exploring</button>
       </div>
       <h2>Welcome</h2>
-      <p>Explore any sport. No account sports yet — nothing is required. Build a multi-sport profile when you’re ready.</p>`;
+      <p>Explore any sport. Add favorites when you’re ready — nothing is required to look around.</p>`;
   }
 }
 
@@ -663,10 +663,9 @@ function renderHome() {
   const roi = $("#roiNote");
   if (roi) {
     if (s) {
-      roi.innerHTML = `<strong style="color:var(--text)">Focus · ${escapeHtml(s.short)}</strong> (optional)<br/>${s.roiSurfaces.map(escapeHtml).join(" · ")}
-        ${s.depth === "full" ? ' <span class="depth-badge full">full feed</span>' : ' <span class="depth-badge">template</span>'}`;
+      roi.innerHTML = `<strong style="color:var(--text)">${escapeHtml(s.short)} near you</strong><br/>${s.roiSurfaces.map(escapeHtml).join(" · ")}`;
     } else {
-      roi.innerHTML = `<strong style="color:var(--text)">Explore mode</strong><br/>Showing mixed venues &amp; events nearby. Tap a sport to focus — clear anytime.`;
+      roi.innerHTML = `<strong style="color:var(--text)">Exploring all sports</strong><br/>Mixed venues and events nearby. Tap a sport to focus — tap again to clear.`;
     }
   }
 
@@ -868,7 +867,7 @@ function bindRateForm(gymId, sport) {
   btn.addEventListener("click", () => {
     host.classList.remove("hidden");
     host.innerHTML = `
-      <p class="muted small">Structured ratings stay scannable. One review per sport here (you can edit later in production).</p>
+      <p class="muted small">Rate what mattered. Tags keep it scannable for other athletes.</p>
       ${RS.REVIEW_DIMENSIONS.map(
         (d) => `
         <div class="dim-row" style="border:none;flex-direction:column;align-items:flex-start">
@@ -1029,7 +1028,7 @@ function openGymDetail(id) {
           ? Object.entries(social)
               .map(([k, v]) => `<div class="row-line"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`)
               .join("") +
-            `<p class="muted small" style="margin-top:12px">Following pulls posts into your Feed via webhooks.</p>`
+            `<p class="muted small" style="margin-top:12px">Following brings their updates into your Feed.</p>`
           : empty("No linked socials", "Gym can connect IG / FB later.")
       }
       <div class="ext-links">
@@ -1121,12 +1120,9 @@ function renderFeed() {
   const hint = $("#feedHint");
   if (hint) {
     if (!s) {
-      hint.textContent = "Explore feed — all sports. Focus a sport to filter (optional).";
+      hint.textContent = "All sports. Focus a sport anytime to narrow what you see.";
     } else {
-      hint.textContent =
-        s.depth === "full"
-          ? `Feed for ${s.short}: tournaments, live, followed socials, notify.`
-          : `Template feed for ${s.short} — calendars deepen later.`;
+      hint.textContent = `${s.short}: events, live sessions, and posts from places you follow.`;
     }
   }
 
@@ -1146,7 +1142,7 @@ function renderFeed() {
     const followed = list.filter((p) => p.followed);
     body.innerHTML = followed.length
       ? followed.map(socialCardHTML).join("")
-      : empty("Follow gyms & athletes", "Link socials on Profile — posts stream here via webhooks.");
+      : empty("Follow gyms & athletes", "Follow places you train — their updates show up here.");
   }
 
   // notify buttons
@@ -1210,12 +1206,10 @@ function renderRepresentStudio(host) {
   const rep = ensureRepresent();
   const c = rep.colors;
   const templates = typeof REPRESENT_TEMPLATES !== "undefined" ? REPRESENT_TEMPLATES : [];
-  const nixEp = typeof NixClient !== "undefined" ? NixClient.getEndpoint() : "";
-
   host.innerHTML = `
     <p class="muted small" style="margin-bottom:10px">
-      Personalize <strong style="color:var(--text)">your</strong> strip only — sport skins stay generic.
-      Upload a crest you have rights to use. Nix (on-device LLM) can read colors &amp; suggest a skin.
+      Personalize <strong style="color:var(--text)">your</strong> strip — club name, crest, and colors.
+      Only upload marks you have rights to use. This does not rebrand every sport for everyone.
     </p>
 
     <label class="toggle-row">
@@ -1288,23 +1282,19 @@ function renderRepresentStudio(host) {
         .join("")}
     </div>
 
-    <h4 class="rep-section-title">5 · Nix (on-device AI)</h4>
-    <p class="muted small">Upload a crest → Nix (or local vision) suggests palette &amp; pattern. Wire your phone Nix endpoint below.</p>
-    <div class="social-field">
-      <label>Nix URL</label>
-      <input type="url" id="nixEndpoint" value="${escapeHtml(nixEp)}" placeholder="http://127.0.0.1:PORT (empty = local extract)" />
-    </div>
+    <h4 class="rep-section-title">5 · Smart colors from logo</h4>
+    <p class="muted small">Upload a crest, then let RollPhase suggest a matching palette and pattern. Tweak anything after.</p>
     <div class="rep-nix-actions">
       <button type="button" class="btn-primary" id="nixAnalyze" ${rep.logoDataUrl ? "" : "disabled"}>
-        ${rep.nix?.status === "working" ? "Analyzing…" : "Analyze logo with Nix"}
+        ${rep.nix?.status === "working" ? "Working…" : "Suggest colors from logo"}
       </button>
-      <button type="button" class="btn-ghost" id="nixSuggest">Refine skin</button>
+      <button type="button" class="btn-ghost" id="nixSuggest">Refine look</button>
     </div>
-    <div class="webhook-box" id="nixNotes">${escapeHtml(rep.nix?.notes || "Nix idle — upload a logo to analyze.")}</div>
+    <div class="webhook-box" id="nixNotes">${escapeHtml(rep.nix?.notes || "Upload a logo, then suggest colors.")}</div>
     <div class="rep-samples" id="nixSamples"></div>
 
     <p class="muted small" style="margin-top:12px">
-      Legal: only upload marks you may use. RollPhase does not ship third-party brand packs as sport themes.
+      Only upload marks you may use. Your crest stays on your profile — it does not become the app’s sport theme for everyone.
     </p>
   `;
 
@@ -1399,14 +1389,10 @@ function renderRepresentStudio(host) {
     applyRepresentStrip();
   });
 
-  $("#nixEndpoint")?.addEventListener("change", (e) => {
-    if (typeof NixClient !== "undefined") NixClient.setEndpoint(e.target.value.trim());
-  });
-
   $("#nixAnalyze")?.addEventListener("click", async () => {
     if (!rep.logoDataUrl || typeof NixClient === "undefined") return;
     rep.nix.status = "working";
-    $("#nixNotes").textContent = "Nix analyzing logo…";
+    $("#nixNotes").textContent = "Reading your logo…";
     $("#nixAnalyze").disabled = true;
     try {
       const result = await NixClient.analyzeLogo(rep.logoDataUrl);
@@ -1418,16 +1404,16 @@ function renderRepresentStudio(host) {
       rep.pattern = result.pattern || rep.pattern;
       rep.nix = {
         status: "ready",
-        notes: result.notes || "Analysis complete",
+        notes: "Palette suggested from your logo — adjust anything you like.",
         source: result.source,
         samples: result.samples || [],
       };
-      rep.mode = "nix";
+      rep.mode = "smart";
       rep.enabled = true;
       renderRepresentStudio(host);
       applyRepresentStrip();
     } catch (err) {
-      rep.nix = { status: "error", notes: String(err.message || err), source: "error", samples: [] };
+      rep.nix = { status: "error", notes: "Could not read that image. Try another file.", source: "error", samples: [] };
       $("#nixNotes").textContent = rep.nix.notes;
       $("#nixAnalyze").disabled = false;
     }
@@ -1435,7 +1421,7 @@ function renderRepresentStudio(host) {
 
   $("#nixSuggest")?.addEventListener("click", async () => {
     if (typeof NixClient === "undefined") return;
-    $("#nixNotes").textContent = "Nix refining skin…";
+    $("#nixNotes").textContent = "Refining look…";
     try {
       const result = await NixClient.suggestSkin({
         label: rep.label,
@@ -1450,7 +1436,7 @@ function renderRepresentStudio(host) {
       if (result.pattern) rep.pattern = result.pattern;
       rep.nix = {
         status: "ready",
-        notes: result.notes || "Refined",
+        notes: "Look refined — keep editing colors if you want.",
         source: result.source,
         samples: rep.nix.samples || [],
       };
@@ -1458,7 +1444,7 @@ function renderRepresentStudio(host) {
       renderRepresentStudio(host);
       applyRepresentStrip();
     } catch (err) {
-      $("#nixNotes").textContent = String(err.message || err);
+      $("#nixNotes").textContent = "Could not refine right now. Try again.";
     }
   });
 }
@@ -1639,17 +1625,16 @@ function renderProfile() {
 
   const wh = $("#webhookList");
   if (wh) {
-    wh.innerHTML =
-      p.webhooks
-        .map(
-          (w) => `
+    wh.innerHTML = p.webhooks?.length
+      ? p.webhooks
+          .map(
+            (w) => `
       <div class="webhook-box">
-        <strong style="color:var(--text)">${escapeHtml(w.source)}</strong> · ${escapeHtml(w.sport)} · ${escapeHtml(w.status)}<br/>
-        ${escapeHtml(w.endpoint)}
+        <strong style="color:var(--text)">${escapeHtml(w.source)}</strong> · ${escapeHtml(w.sport)} · ${escapeHtml(w.status)}
       </div>`
-        )
-        .join("") +
-      `<p class="muted small" style="margin-top:10px">Production: Supabase Edge Functions ingest calendar ICS, IG Graph, FB Page, and org APIs → sport-scoped feed + push.</p>`;
+          )
+          .join("")
+      : `<p class="muted small">Nothing connected yet. Follow gyms and events as you explore.</p>`;
   }
 }
 
@@ -1663,8 +1648,8 @@ function openSportPicker({ addMode = false } = {}) {
   const foot = $(".sheet-foot");
   if (foot) {
     foot.textContent = addMode
-      ? "Add to profile — multi-sport welcome. Focus is still optional on Home."
-      : "Focus for today (optional) · Explore all · never locks you out of other sports";
+      ? "Add sports you train — as many as you want"
+      : "Focus for today is optional · explore all anytime";
   }
 }
 
@@ -1696,7 +1681,7 @@ function renderSportGrid() {
     <button type="button" class="sport-option ${s.id === focusId() ? "selected" : ""}" data-sport="${s.id}" data-add="${addMode ? "1" : "0"}">
       <img class="ico-3d" src="${s.icon}" alt="" />
       <span class="nm">${escapeHtml(s.name)}</span>
-      <span class="meta">${escapeHtml(s.vibe)}${onProfile ? " · on profile" : ""}${addMode && !onProfile ? " · tap to add" : ""}</span>
+      <span class="meta">${escapeHtml(s.vibe)}${onProfile ? " · in your sports" : ""}${addMode && !onProfile ? " · tap to add" : ""}</span>
     </button>`;
       })
       .join("");

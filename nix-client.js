@@ -61,12 +61,12 @@ const NixClient = (() => {
             secondary: json.secondary || "#f5f5f5",
             accent: json.accent || json.primary || "#888888",
             pattern: json.pattern || json.pattern_hint || "rings",
-            notes: json.notes || "Nix on-device analysis",
-            source: "nix",
+            notes: json.notes || "Palette ready",
+            source: "smart",
           };
         }
       } catch (e) {
-        console.warn("Nix endpoint failed, falling back to local extract", e);
+        console.warn("smart palette endpoint failed", e);
       }
     }
     return extractPaletteLocal(dataUrl);
@@ -96,7 +96,7 @@ const NixClient = (() => {
       secondary: c.secondary || "#f0f0f0",
       accent: c.accent || "#c0c0c0",
       pattern: "stripe",
-      notes: "Local refine (connect Nix for richer skins)",
+      notes: "Look refined",
       source: "local",
     };
   }
@@ -150,7 +150,7 @@ const NixClient = (() => {
             secondary,
             accent,
             pattern,
-            notes: "On-device palette extract (Nix vision stand-in). Connect Nix endpoint for LLM skin gen.",
+            notes: "Palette suggested from your logo — adjust anything you like.",
             source: "local-vision",
             samples: colors.slice(0, 6),
           });
