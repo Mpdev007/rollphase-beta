@@ -172,9 +172,10 @@
               <div class="section-head">
                 <h2 id="feedTitle">Feed</h2>
                 <div class="seg" id="feedSeg">
-                  <button type="button" class="seg-btn active" data-feed="events">Events</button>
+                  <button type="button" class="seg-btn active" data-feed="foryou">For you</button>
+                  <button type="button" class="seg-btn" data-feed="events">Events</button>
                   <button type="button" class="seg-btn" data-feed="live">Live</button>
-                  <button type="button" class="seg-btn" data-feed="social">Social</button>
+                  <button type="button" class="seg-btn" data-feed="social">Updates</button>
                 </div>
               </div>
               <p class="hint" id="feedHint"></p>
@@ -193,7 +194,20 @@
 
               <div class="card static">
                 <h3>Your sports</h3>
+                <p class="muted small">Set a <strong>first choice</strong> so Feed and Home prioritize that sport. You can still train and explore others anytime.</p>
                 <div class="sport-tags" id="profileSports"></div>
+              </div>
+
+              <div class="card static">
+                <h3>Stay in the loop</h3>
+                <p class="muted small">What you want emphasized. Critical updates from your first-choice sport and saved places.</p>
+                <div id="notifyPrefs"></div>
+              </div>
+
+              <div class="card static">
+                <h3>My places</h3>
+                <p class="muted small">Saved gyms and places you’ve trained — quick open, specials, and stay updated.</p>
+                <div id="myPlaces"></div>
               </div>
 
               <div class="card static">
@@ -203,25 +217,19 @@
 
               <div class="card static">
                 <h3>My venue reviews</h3>
-                <p class="muted small">Visit-verified ratings help other athletes on RollPhase — sport-scoped, low noise.</p>
+                <p class="muted small">Ratings help other athletes know what’s worth it.</p>
                 <div id="myReviews"></div>
               </div>
 
               <div class="card static">
                 <h3>Social profiles</h3>
-                <p class="muted small">Linked accounts power follow-graph feeds (gyms you follow → posts here).</p>
+                <p class="muted small">Optional links on your athlete card.</p>
                 <div class="social-fields" id="socialFields"></div>
               </div>
 
               <div class="card static">
                 <h3>Following</h3>
                 <div id="followingList"></div>
-              </div>
-
-              <div class="card static">
-                <h3>Connected sources</h3>
-                <p class="muted small">Calendars and pages you follow can surface here later. Optional for beta.</p>
-                <div id="webhookList"></div>
               </div>
 
               <div class="card static">

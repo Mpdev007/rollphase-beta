@@ -1,7 +1,19 @@
-﻿# RollPhase
+# RollPhase (beta)
 
-Train near you. Every sport. Your people.
+**Train near you · every sport · your people.**
 
-**Live beta:** https://mpdev007.github.io/rollphase-beta/
+Find gyms, partners, events, and gear. Rate venues after you train. Personalize how you represent your club.
 
-Closed beta — explore gyms, partners, events, ratings, and your profile.
+## Try it
+
+Open the live beta, or run locally:
+
+```bash
+python -m http.server 8765
+```
+
+Then visit `http://localhost:8765/`
+
+## Closed beta
+
+Accept the welcome terms, explore, and use **Feedback** anytime.

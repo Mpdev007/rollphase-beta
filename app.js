@@ -8,7 +8,7 @@ const state = {
   gymView: "list",
   rankFilter: "all",
   gearMode: "shops",
-  feedMode: "events",
+  feedMode: "foryou",
   agePool: "adult",
   openToTrain: true,
   checkedInGym: null,
@@ -25,6 +25,15 @@ function emptyProfile() {
     area: "",
     ageBand: "Adult",
     sports: [],
+    primarySportId: null,
+    favorites: [],
+    notify: {
+      primarySport: true,
+      savedGyms: true,
+      specials: true,
+      tournaments: true,
+      liveNearby: true,
+    },
     represent: {
       enabled: false,
       label: "",
@@ -40,6 +49,55 @@ function emptyProfile() {
     webhooks: [],
     eventNotifies: {},
   };
+}
+
+function primarySportId() {
+  return state.profile?.primarySportId || profileSports()[0]?.id || null;
+}
+
+function ensureNotify() {
+  if (!state.profile.notify) {
+    state.profile.notify = {
+      primarySport: true,
+      savedGyms: true,
+      specials: true,
+      tournaments: true,
+      liveNearby: true,
+    };
+  }
+  return state.profile.notify;
+}
+
+function ensureFavorites() {
+  if (!Array.isArray(state.profile.favorites)) state.profile.favorites = [];
+  return state.profile.favorites;
+}
+
+function isFavorite(gymId) {
+  return ensureFavorites().some((f) => f.gymId === gymId);
+}
+
+function toggleFavorite(gym) {
+  const list = ensureFavorites();
+  const i = list.findIndex((f) => f.gymId === gym.id);
+  if (i >= 0) list.splice(i, 1);
+  else {
+    list.push({
+      gymId: gym.id,
+      name: gym.name,
+      sport: focusId() && gym.sports.includes(focusId()) ? focusId() : gym.sports[0],
+    });
+  }
+}
+
+function setPrimarySport(sportId) {
+  if (!sportId) return;
+  if (!profileSports().some((s) => s.id === sportId)) {
+    addSportToProfile(sportId, "—");
+  }
+  state.profile.primarySportId = sportId;
+  // Soft default focus — user can still clear / explore
+  setSport(sportId);
 }
 
 function safeClone(obj) {
@@ -358,8 +416,8 @@ function setDemoMode(mode) {
     state.sport = null;
   } else {
     state.profile = safeClone(PROFILE_DEFAULT);
-    // soft default: first profile sport as optional focus, not forced forever
-    state.sport = state.profile.sports[0]?.id || null;
+    // Emphasize first choice if set
+    state.sport = state.profile.primarySportId || state.profile.sports[0]?.id || null;
   }
   applySkin(state.sport, { flash: false });
   safeRenderAll();
@@ -991,7 +1049,8 @@ function openGymDetail(id) {
           : ""
       }
       <button type="button" class="btn-primary" id="checkInHere">Check in${s ? ` · ${escapeHtml(s.short)}` : ""}</button>
-      <button type="button" class="btn-ghost" id="followGym" style="width:100%;margin-top:8px;padding:12px">Follow gym · social feed</button>
+      <button type="button" class="btn-ghost" id="savePlace" style="width:100%;margin-top:8px;padding:12px">${isFavorite(g.id) ? "✓ Saved place" : "Save place · stay in the loop"}</button>
+      <button type="button" class="btn-ghost" id="followGym" style="width:100%;margin-top:8px;padding:12px">Follow for updates</button>
       <button type="button" class="btn-ghost" id="jumpReviews" style="width:100%;margin-top:8px;padding:12px">See athlete reviews</button>
       ${
         sport && !profileSports().some((ps) => ps.id === sport)
@@ -1056,11 +1115,16 @@ function openGymDetail(id) {
     if (typeof ReviewSystem !== "undefined") ReviewSystem.recordVisit(g.id, sport);
     switchTab("home");
   });
+  $("#savePlace")?.addEventListener("click", (e) => {
+    toggleFavorite(g);
+    e.target.textContent = isFavorite(g.id) ? "✓ Saved place" : "Save place · stay in the loop";
+  });
   $("#followGym")?.addEventListener("click", (e) => {
     const exists = state.profile.following.some((f) => f.name === g.name);
     if (!exists) {
       state.profile.following.push({ type: "gym", name: g.name, sport: sport || g.sports[0], platform: "instagram" });
     }
+    if (!isFavorite(g.id)) toggleFavorite(g);
     e.target.textContent = "Following ✓";
   });
   $("#addSportFromGym")?.addEventListener("click", () => {
@@ -1521,29 +1585,99 @@ function renderProfile() {
   const sportsHost = $("#profileSports");
   if (sportsHost) {
     const list = profileSports();
+    const primary = primarySportId();
     sportsHost.innerHTML = list.length
       ? list
           .map((x) => {
             const s = sportMeta(x.id);
+            const isP = primary === x.id;
             return `
-          <div class="profile-sport-row">
+          <div class="profile-sport-row ${isP ? "is-primary" : ""}">
             <img src="${s?.icon || "assets/logo.jpg"}" alt="" />
             <div class="meta">
-              <strong>${escapeHtml(s?.name || x.id)}</strong>
-              <span>${escapeHtml(x.level || "—")} · tap home rail to focus</span>
+              <strong>${escapeHtml(s?.name || x.id)}${isP ? " · First choice" : ""}</strong>
+              <span>${escapeHtml(x.level || "—")}${isP ? " · Feed prioritizes this" : ""}</span>
             </div>
+            <button type="button" data-primary-sport="${x.id}">${isP ? "★ Primary" : "Make primary"}</button>
             <button type="button" data-remove-sport="${x.id}">Remove</button>
           </div>`;
           })
           .join("") +
         `<button type="button" class="btn-ghost" id="profileAddSport" style="width:100%;margin-top:10px;padding:10px">+ Add another sport</button>`
-      : `<p class="muted small">No sports on profile yet — you’re free to explore. Add as many as you train.</p>
+      : `<p class="muted small">Add the sports you train. Then set one as <strong>first choice</strong> so your Feed stays useful.</p>
          <button type="button" class="btn-ghost" id="profileAddSport" style="width:100%;margin-top:10px;padding:10px">+ Add sports</button>`;
 
     sportsHost.querySelectorAll("[data-remove-sport]").forEach((btn) => {
-      btn.addEventListener("click", () => removeSportFromProfile(btn.dataset.removeSport));
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.removeSport;
+        if (state.profile.primarySportId === id) state.profile.primarySportId = null;
+        removeSportFromProfile(id);
+      });
+    });
+    sportsHost.querySelectorAll("[data-primary-sport]").forEach((btn) => {
+      btn.addEventListener("click", () => setPrimarySport(btn.dataset.primarySport));
     });
     $("#profileAddSport")?.addEventListener("click", () => openSportPicker({ addMode: true }));
+  }
+
+  const notifyHost = $("#notifyPrefs");
+  if (notifyHost) {
+    const n = ensureNotify();
+    const ps = sportMeta(primarySportId());
+    const rows = [
+      ["primarySport", ps ? `First choice: ${ps.short}` : "First-choice sport updates", "Events and news for your main sport"],
+      ["savedGyms", "Saved places", "When a gym you saved posts or hosts something"],
+      ["specials", "Specials & open sessions", "Open mats, free weeks, one-off nights"],
+      ["tournaments", "Tournaments & races", "Registration windows and big dates"],
+      ["liveNearby", "Live nearby", "Who’s training / sessions happening now"],
+    ];
+    notifyHost.innerHTML = rows
+      .map(
+        ([key, label, sub]) => `
+      <label class="toggle-row">
+        <span><strong style="display:block;font-size:0.85rem">${escapeHtml(label)}</strong>
+        <span class="muted small">${escapeHtml(sub)}</span></span>
+        <input type="checkbox" data-notify-pref="${key}" ${n[key] ? "checked" : ""} />
+      </label>`
+      )
+      .join("");
+    notifyHost.querySelectorAll("[data-notify-pref]").forEach((input) => {
+      input.addEventListener("change", () => {
+        ensureNotify()[input.dataset.notifyPref] = input.checked;
+      });
+    });
+  }
+
+  const placesHost = $("#myPlaces");
+  if (placesHost) {
+    const favs = ensureFavorites();
+    placesHost.innerHTML = favs.length
+      ? favs
+          .map((f) => {
+            const g = GYMS.find((x) => x.id === f.gymId);
+            const sm = sportMeta(f.sport);
+            return `
+          <div class="profile-sport-row">
+            <div class="meta" style="margin-left:0">
+              <strong>${escapeHtml(f.name)}</strong>
+              <span>${escapeHtml(sm?.short || "")} · saved${g?.open ? " · often open" : ""}</span>
+            </div>
+            <button type="button" data-open-place="${f.gymId}">Open</button>
+            <button type="button" data-unsave-place="${f.gymId}">Unsave</button>
+          </div>`;
+          })
+          .join("") +
+        `<p class="muted small" style="margin-top:8px">Open a gym → Save place. Specials from these land in <strong>Feed → For you</strong>.</p>`
+      : `<p class="muted small">No saved places yet. When you find a gym you like, tap <strong>Save place</strong> so you never miss their specials.</p>`;
+    placesHost.querySelectorAll("[data-open-place]").forEach((b) => {
+      b.addEventListener("click", () => openGymDetail(b.dataset.openPlace));
+    });
+    placesHost.querySelectorAll("[data-unsave-place]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.profile.favorites = ensureFavorites().filter((f) => f.gymId !== b.dataset.unsavePlace);
+        renderProfile();
+      });
+    });
   }
 
   const repHost = $("#representFields");
@@ -1873,8 +2007,10 @@ function bind() {
 /* Boot — resilient */
 (function boot() {
   try {
-    // Athlete demo starts with soft focus on first profile sport (optional)
-    if (hasProfileSports()) {
+    // Emphasize first-choice sport when profile has one (still optional to clear)
+    if (primarySportId()) {
+      state.sport = primarySportId();
+    } else if (hasProfileSports()) {
       state.sport = profileSports()[0].id;
     } else {
       state.sport = null;

@@ -743,6 +743,17 @@ body.beta-locked .stage {
   font-weight: 600;
   cursor: pointer;
 }
+.profile-sport-row.is-primary {
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 6px;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+.profile-sport-row.is-primary button[data-primary-sport] {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
+}
 .demo-banner {
   display: flex;
   gap: 8px;

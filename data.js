@@ -766,6 +766,23 @@ const PROFILE_DEFAULT = {
     { id: "boxing", level: "Novice" },
     { id: "hyrox", level: "Open" },
   ],
+  /** First-choice sport — feed + home lean hard this way without locking other sports */
+  primarySportId: "bjj",
+  /** Saved venues (user-pinned) */
+  favorites: [
+    { gymId: "g0", name: "Northside Mat Club", sport: "bjj" },
+    { gymId: "g13", name: "Kitchen Pickle Club", sport: "pickleball" },
+  ],
+  /**
+   * Stay in the loop — product prefs (push later; feed uses these now)
+   */
+  notify: {
+    primarySport: true,
+    savedGyms: true,
+    specials: true,
+    tournaments: true,
+    liveNearby: true,
+  },
   /**
    * Club you represent — fully user-personalized.
    * Sport skins stay generic; this only affects profile strip + soft ambient.
