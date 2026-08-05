@@ -1179,40 +1179,165 @@ function renderPartners() {
   });
 }
 
+function forYouFeedItems() {
+  const primary = primarySportId();
+  const n = ensureNotify();
+  const favNames = new Set(ensureFavorites().map((f) => f.name));
+  const items = [];
+
+  if (n.primarySport && primary) {
+    EVENTS.filter((e) => e.sport === primary).forEach((e) => {
+      if (e.live && !n.liveNearby) return;
+      if ((e.kind === "tournament" || e.kind === "race" || e.kind === "fight") && !n.tournaments && !e.live) return;
+      const important =
+        e.kind === "tournament" || e.kind === "fight" || e.kind === "race" || e.live;
+      items.push({
+        sort: e.live ? 0 : important ? 1 : 2,
+        key: `e-${e.id}`,
+        html: forYouEventCard(e, primary, "First choice"),
+      });
+    });
+  }
+
+  if (n.savedGyms || n.specials) {
+    SOCIAL_POSTS.forEach((p) => {
+      const savedHit = [...favNames].some(
+        (name) => p.author === name || p.author.includes(name.split(" ")[0])
+      );
+      const primaryHit = primary && p.sport === primary && n.primarySport;
+      if (!savedHit && !primaryHit) return;
+      const isSpecial = /open mat|special|tonight|free|ladder|sim|smoker|registration/i.test(p.body);
+      if (isSpecial && !n.specials && !savedHit) return;
+      items.push({
+        sort: isSpecial || savedHit ? 1 : 3,
+        key: `s-${p.id}`,
+        html: forYouSocialCard(p, savedHit ? "Saved place" : "First choice"),
+      });
+    });
+
+    EVENTS.forEach((e) => {
+      const gymHit = [...favNames].some(
+        (name) => (e.where || "").includes(name) || (e.where || "").includes(name.split(" ")[0])
+      );
+      if (!gymHit) return;
+      items.push({
+        sort: e.live ? 0 : 1,
+        key: `ef-${e.id}`,
+        html: forYouEventCard(e, e.sport, "Saved place"),
+      });
+    });
+  }
+
+  profileSports()
+    .map((s) => s.id)
+    .filter((id) => id !== primary)
+    .slice(0, 2)
+    .forEach((sid) => {
+      EVENTS.filter((e) => e.sport === sid && !e.live)
+        .slice(0, 1)
+        .forEach((e) => {
+          items.push({
+            sort: 4,
+            key: `sec-${e.id}`,
+            html: forYouEventCard(e, sid, "Also train"),
+          });
+        });
+    });
+
+  const seen = new Set();
+  return items
+    .sort((a, b) => a.sort - b.sort)
+    .filter((it) => {
+      if (seen.has(it.key)) return false;
+      seen.add(it.key);
+      return true;
+    })
+    .map((it) => it.html);
+}
+
+function forYouEventCard(e, sportId, badge) {
+  const on = !!state.profile.eventNotifies?.[e.id];
+  const sm = sportMeta(sportId || e.sport);
+  return `
+    <article class="feed-card ${e.live ? "live-card" : ""}" data-event="${e.id}">
+      <div class="feed-top">
+        <div>
+          <div class="feed-kind">${e.live ? '<span class="live-dot"></span>' : ""}${escapeHtml(badge)} · ${escapeHtml(sm?.short || "")}</div>
+          <div class="card-title" style="margin-top:4px">${escapeHtml(e.title)}</div>
+          <div class="card-meta">${escapeHtml(e.when)} · ${escapeHtml(e.where)} · ${e.mi} mi</div>
+          ${e.reg ? `<div class="card-meta" style="color:var(--accent)">${escapeHtml(e.reg)}</div>` : ""}
+        </div>
+      </div>
+      <div class="notify-row">
+        <span class="small muted">${e.live ? "Happening now" : "In your loop"}</span>
+        <button type="button" class="notify-btn ${on ? "on" : ""}" data-notify="${e.id}">${on ? "Alert on" : "Alert me"}</button>
+      </div>
+    </article>`;
+}
+
+function forYouSocialCard(p, badge) {
+  return `
+    <article class="feed-card social-post">
+      <div class="source">
+        <div class="source-av">${initials(p.author)}</div>
+        <div>
+          <div class="card-title" style="font-size:0.88rem">${escapeHtml(p.author)}</div>
+          <div class="platform">${escapeHtml(badge)} · ${escapeHtml(sportMeta(p.sport)?.short || "")} · ${escapeHtml(p.when)}</div>
+        </div>
+      </div>
+      <div class="card-meta" style="color:var(--text);font-size:0.85rem;line-height:1.4">${escapeHtml(p.body)}</div>
+    </article>`;
+}
+
 function renderFeed() {
-  const s = sportMeta(focusId());
+  const primary = primarySportId();
+  const s = sportMeta(focusId() || primary);
   const hint = $("#feedHint");
   if (hint) {
-    if (!s) {
-      hint.textContent = "All sports. Focus a sport anytime to narrow what you see.";
+    if (state.feedMode === "foryou") {
+      const ps = sportMeta(primary);
+      hint.textContent = ps
+        ? `Built around ${ps.short} (first choice) + your saved places.`
+        : "Set a first-choice sport on Profile so this feed stays useful.";
+    } else if (!s) {
+      hint.textContent = "All sports. Set a first choice on Profile for a tighter loop.";
     } else {
-      hint.textContent = `${s.short}: events, live sessions, and posts from places you follow.`;
+      hint.textContent = `${s.short}: events, live sessions, and place updates.`;
     }
   }
 
   const body = $("#feedBody");
-  if (state.feedMode === "events") {
+  if (!body) return;
+
+  if (state.feedMode === "foryou") {
+    const list = forYouFeedItems();
+    body.innerHTML = list.length
+      ? list.join("")
+      : empty(
+          "Your loop is quiet",
+          "Set a first-choice sport and save a few gyms — specials and events land here."
+        );
+  } else if (state.feedMode === "events") {
     const list = eventsForSport({ upcomingOnly: true });
     body.innerHTML = list.length
       ? list.map(eventCardHTML).join("")
-      : empty("No upcoming events", "Webhooks will fill this when calendars connect.");
+      : empty("No upcoming events", "Try another sport or open For you.");
   } else if (state.feedMode === "live") {
     const list = eventsForSport({ liveOnly: true });
     body.innerHTML = list.length
       ? list.map(eventCardHTML).join("")
-      : empty("Nothing live right now", "Check-ins and live sessions appear here.");
+      : empty("Nothing live right now", "Live sessions show up here.");
   } else {
-    const list = socialForSport().filter((p) => p.followed || true);
-    const followed = list.filter((p) => p.followed);
-    body.innerHTML = followed.length
-      ? followed.map(socialCardHTML).join("")
-      : empty("Follow gyms & athletes", "Follow places you train — their updates show up here.");
+    const list = socialForSport();
+    body.innerHTML = list.length
+      ? list.map(socialCardHTML).join("")
+      : empty("No updates yet", "Save or follow places you train.");
   }
 
-  // notify buttons
   $$("[data-notify]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.notify;
+      state.profile.eventNotifies = state.profile.eventNotifies || {};
       state.profile.eventNotifies[id] = !state.profile.eventNotifies[id];
       renderFeed();
     });
