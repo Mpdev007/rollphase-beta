@@ -31,7 +31,7 @@ function sportDef(partial) {
     roiSurfaces: ["classes", "open now", "local partners"],
     ...partial,
   };
-  if (sport.icon && !sport.icon.includes("?")) sport.icon += "?v=3";
+  if (sport.icon && !sport.icon.includes("?")) sport.icon += "?v=7";
   return sport;
 }
 

@@ -1766,7 +1766,7 @@ body {
 .sport-hero-copy {
   position: relative; z-index: 1;
   padding: 16px 18px;
-  max-width: 68%;
+  max-width: 62%;
 }
 .sport-hero-copy .kicker {
   font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em;
@@ -2363,9 +2363,18 @@ html.rp-mobile body {
   }
 
   #betaChrome {
-    top: max(12px, calc(var(--safe-top) + 6px));
-    right: max(12px, var(--safe-right));
+    top: max(6px, var(--safe-top));
+    left: 8px;
+    right: 8px;
+    max-width: none;
+    justify-content: flex-end;
   }
+  .app-header {
+    margin-top: 64px;
+    padding-top: 4px;
+  }
+  .brand-name, .brand-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sport-chip { max-width: 46%; }
 
   #updateBanner {
     bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + 8px);
