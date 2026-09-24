@@ -87,6 +87,9 @@ function loadPersisted() {
       notify: { ...blank.notify, ...(saved.notify || {}) },
       represent: { ...blank.represent, ...(saved.represent || {}) },
     };
+    if (state.profile.displayName === "Vlad" || state.profile.displayName === "Guest") {
+      state.profile.displayName = "";
+    }
     if (saved.agePool === "teen" || saved.agePool === "adult") state.agePool = saved.agePool;
     if (saved.focusSport) state.sport = saved.focusSport;
   } catch {
@@ -1265,7 +1268,8 @@ function renderHomeSportRail() {
 function renderHomeWelcome() {
   const el = $("#homeWelcome");
   if (!el) return;
-  const name = state.profile.displayName || "there";
+  const rawName = (state.profile.displayName || "").trim();
+  const name = rawName && rawName !== "Vlad" && rawName !== "Guest" ? rawName : "";
   if (hasProfileSports()) {
     const list = profileSports()
       .map((ps) => sportMeta(ps.id)?.short || ps.id)
@@ -1275,7 +1279,7 @@ function renderHomeWelcome() {
         <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports</button>
         <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Just exploring</button>
       </div>
-      <h2>Hey ${escapeHtml(name)}</h2>
+      <h2>${name ? `Hey ${escapeHtml(name)}` : "Welcome"}</h2>
       <p>Your sports: ${escapeHtml(list)}. Focus one for today or stay open — switch anytime.</p>`;
   } else {
     el.innerHTML = `

@@ -423,7 +423,7 @@ const NEEDS = [];
 
 /** Default profile social graph + webhook endpoints (prototype) */
 const PROFILE_DEFAULT = {
-  displayName: "Vlad",
+  displayName: "",
   area: "Near you",
   ageBand: "Adult",
   sports: [
