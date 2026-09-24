@@ -2570,12 +2570,6 @@ function bindPhoneSettings() {
   });
   const hap = $("#hapticsOn");
   if (hap) hap.checked = settings.haptics !== false;
-  const status = $("#placesKeyStatus");
-  if (status) {
-    status.textContent = settings.googlePlacesApiKey
-      ? "A key is saved on this phone. The next search can use it."
-      : "No key saved. The free map search is still on.";
-  }
   const seg = $("#textSizeSeg");
   if (seg && seg.dataset.bound !== "1") {
     seg.dataset.bound = "1";
@@ -2592,28 +2586,6 @@ function bindPhoneSettings() {
     hap.addEventListener("change", () => {
       saveSettings({ haptics: hap.checked });
       if (hap.checked) buzz(16);
-    });
-  }
-  const saveKey = $("#savePlacesKey");
-  if (saveKey && saveKey.dataset.bound !== "1") {
-    saveKey.dataset.bound = "1";
-    saveKey.addEventListener("click", () => {
-      const value = ($("#placesKeyInput")?.value || "").trim();
-      if (!value) return;
-      saveSettings({ googlePlacesApiKey: value });
-      if ($("#placesKeyInput")) $("#placesKeyInput").value = "";
-      buzz(12);
-      bindPhoneSettings();
-      loadLivePlaces({ force: true });
-    });
-  }
-  const clearKey = $("#clearPlacesKey");
-  if (clearKey && clearKey.dataset.bound !== "1") {
-    clearKey.dataset.bound = "1";
-    clearKey.addEventListener("click", () => {
-      saveSettings({ googlePlacesApiKey: "" });
-      if ($("#placesKeyInput")) $("#placesKeyInput").value = "";
-      bindPhoneSettings();
     });
   }
 }
