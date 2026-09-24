@@ -1,4 +1,4 @@
-/* RollPhase catalog — sports, venues, events, social (mock intelligence layer)
+/* RollPhase catalog — sports metadata only. Venues/events/partners are live or empty (no fake listings).
  * depth: "full" = rich events + pro athlete ROI surfaces
  *        "template" = consistent shell, lighter mock (not fully implemented)
  */
@@ -383,381 +383,28 @@ const SPORTS = [
   }),
 ];
 
-const GYMS = [
-  {
-    id: "g0", name: "Northside Mat Club", sports: ["bjj"], mi: 0.6, open: true,
-    tags: { bjj: ["Gi", "No-Gi", "Open mat", "Kids", "Competition"] },
-    amenities: ["mats"],
-    next: { bjj: "Kids / fundamentals · 5:30 PM · Open mat Sat 10a" },
-    hours: "Mon–Fri 5p–9p · Sat morning open mat",
-    here: { bjj: [{ n: "Coach", l: "Black" }, { n: "Team kid", l: "Orange" }] },
-    promo: { bjj: "Local kids competition team welcome" },
-    social: { instagram: "@northsidematclub" },
-  },
-  {
-    id: "g0b", name: "Riverside Grappling", sports: ["bjj"], mi: 1.1, open: true,
-    tags: { bjj: ["Gi", "Competition", "Open mat"] },
-    amenities: ["mats"],
-    next: { bjj: "Competition class · 6:30 PM" },
-    hours: "Mon–Sat",
-    here: { bjj: [{ n: "Alex", l: "Purple" }] },
-    promo: { bjj: "Travelers open mat weekends" },
-    social: { instagram: "@riversidegrappling" },
-  },
-  {
-    id: "g1", name: "Alliance Austin", sports: ["bjj", "mma", "judo"], mi: 2.8, open: true,
-    tags: { bjj: ["Gi", "No-Gi", "Open mat", "Competition"], mma: ["Cage", "Spar night"], judo: ["Randori"] },
-    amenities: ["mats", "cage"],
-    next: { bjj: "Open mat · 6:00 PM", mma: "Sparring · 7:30 PM", judo: "Randori · Thu 7p" },
-    hours: "Mon–Fri 6a–10p",
-    here: { bjj: [{ n: "Maya", l: "Blue" }, { n: "Chris", l: "Purple" }], mma: [{ n: "Dez", l: "Intermediate" }], judo: [] },
-    promo: { bjj: "First week free for travelers" },
-    social: { instagram: "@allianceaustin", facebook: "AllianceAustinBJJ" },
-  },
-  {
-    id: "g2", name: "10th Planet ATX", sports: ["bjj"], mi: 3.4, open: true,
-    tags: { bjj: ["No-Gi", "Leg locks", "Open mat"] },
-    amenities: ["mats"],
-    next: { bjj: "Fundamentals · 5:30 PM" },
-    hours: "Mon–Sat 11a–9p",
-    here: { bjj: [{ n: "Jordan", l: "White 4★" }] },
-    promo: {},
-    social: { instagram: "@10thplanetatx" },
-  },
-  {
-    id: "g13", name: "Kitchen Pickle Club", sports: ["pickleball", "tennis"], mi: 1.2, open: true,
-    tags: { pickleball: ["Open play", "Indoor", "Hosts events", "Ladder"], tennis: ["Clinics"] },
-    amenities: ["courts", "indoor"],
-    next: { pickleball: "Open play · 11:00 AM–2:00 PM", tennis: "Clinic · Sat 9a" },
-    hours: "Daily 7a–10p",
-    here: { pickleball: [{ n: "Ava", l: "DUPR 3.8" }, { n: "Sam", l: "DUPR 4.1" }], tennis: [] },
-    promo: { pickleball: "Newbie night Wed free" },
-    social: { instagram: "@kitchenpickle", facebook: "KitchenPickleClub" },
-  },
-  {
-    id: "g14", name: "Dink & Drive ATX", sports: ["pickleball"], mi: 3.0, open: true,
-    tags: { pickleball: ["Open play", "Tournament", "Outdoor"] },
-    amenities: ["courts"],
-    next: { pickleball: "DUPR ladder · 6:30 PM" },
-    hours: "Daily sunrise–10p",
-    here: { pickleball: [{ n: "Lee", l: "DUPR 3.2" }] },
-    promo: {},
-    social: { instagram: "@dinkdriveatx" },
-  },
-  {
-    id: "g15", name: "Sitsiemu Muay Thai", sports: ["muaythai", "kickboxing", "mma"], mi: 2.0, open: true,
-    tags: {
-      muaythai: ["Pad class", "Fight team", "Clinch"],
-      kickboxing: ["Spar night", "Classes"],
-      mma: ["Striking"],
-    },
-    amenities: ["bags", "ring"],
-    next: { muaythai: "Pads · 6:00 PM", kickboxing: "Spar · Fri 7p", mma: "Striking · 5p" },
-    hours: "Mon–Sat 6a–9p",
-    here: { muaythai: [{ n: "Bee", l: "Fight team" }], kickboxing: [], mma: [] },
-    promo: { muaythai: "Fight team tryouts monthly" },
-    social: { instagram: "@sitsiemuatx", facebook: "SitsiemuMT" },
-  },
-  {
-    id: "g16", name: "Station One HYROX", sports: ["hyrox", "crossfit", "weightlifting"], mi: 2.8, open: true,
-    tags: {
-      hyrox: ["Sled / stations", "HYROX class", "Sim day"],
-      crossfit: ["Rig", "WOD"],
-      weightlifting: ["Platforms"],
-    },
-    amenities: ["sled", "stations", "rig", "platforms"],
-    next: { hyrox: "Sim stations · 5:30 PM", crossfit: "WOD · 6p", weightlifting: "Open platform" },
-    hours: "Mon–Fri 5a–9p · Sat 7a–2p",
-    here: { hyrox: [{ n: "Kai", l: "Pro doubles" }], crossfit: [], weightlifting: [] },
-    promo: { hyrox: "Race prep block · 8 weeks" },
-    social: { instagram: "@stationonehyrox" },
-  },
-  {
-    id: "g3", name: "Iron Temple Strength", sports: ["weightlifting", "crossfit", "hyrox"], mi: 2.1, open: true,
-    tags: {
-      weightlifting: ["Platforms", "Olympic", "24h floor"],
-      crossfit: ["Rig", "WOD"],
-      hyrox: ["Sled / stations"],
-    },
-    amenities: ["platforms", "racks", "rig", "sled"],
-    next: { weightlifting: "Open platform · now", crossfit: "WOD · 5:00 PM", hyrox: "Engine class · 6p" },
-    hours: "24 hours (members)",
-    here: { weightlifting: [{ n: "Sam", l: "Intermediate" }], crossfit: [], hyrox: [] },
-    promo: {},
-    social: { instagram: "@irontempleatx" },
-  },
-  {
-    id: "g4", name: "Round One Boxing", sports: ["boxing", "kickboxing", "mma"], mi: 3.2, open: false,
-    tags: { boxing: ["Ring", "Heavy bags"], kickboxing: ["Classes"], mma: ["Bags"] },
-    amenities: ["ring", "bags"],
-    next: { boxing: "Opens 4:00 PM", kickboxing: "Opens 4:00 PM", mma: "Opens 4:00 PM" },
-    hours: "Tue–Sun 4p–10p",
-    here: { boxing: [], kickboxing: [], mma: [] },
-    promo: { boxing: "Intro class $20" },
-    social: { instagram: "@roundoneboxing" },
-  },
-  {
-    id: "g5", name: "Matador Wrestling Club", sports: ["wrestling"], mi: 4.0, open: true,
-    tags: { wrestling: ["Folkstyle", "Open mat"] },
-    amenities: ["mats"],
-    next: { wrestling: "Open mat · 7:00 PM" },
-    hours: "Mon–Thu 5p–9p",
-    here: { wrestling: [{ n: "Alex", l: "HS varsity" }] },
-    promo: {},
-    social: {},
-  },
-  {
-    id: "g6", name: "Crux Climbing", sports: ["climbing"], mi: 2.6, open: true,
-    tags: { climbing: ["Boulder", "Rope", "Day pass"] },
-    amenities: ["walls"],
-    next: { climbing: "Open climb · all day" },
-    hours: "Daily 10a–11p",
-    here: { climbing: [{ n: "Riley", l: "V4" }] },
-    promo: { climbing: "Day pass $22" },
-    social: { instagram: "@cruxclimbing" },
-  },
-  {
-    id: "g7", name: "Lane 8 Aquatic", sports: ["swimming"], mi: 5.1, open: true,
-    tags: { swimming: ["Lap lanes", "Masters"] },
-    amenities: ["pool", "lanes"],
-    next: { swimming: "Lap swim · now" },
-    hours: "Daily 5a–9p",
-    here: { swimming: [] },
-    promo: {},
-    social: {},
-  },
-  {
-    id: "g8", name: "Still Point Yoga", sports: ["yoga", "pilates"], mi: 1.1, open: true,
-    tags: { yoga: ["Vinyasa", "Yin"], pilates: ["Mat", "Classes today"] },
-    amenities: ["studio"],
-    next: { yoga: "Vinyasa · 6:15 PM", pilates: "Mat pilates · 12p" },
-    hours: "Daily 7a–8p",
-    here: { yoga: [{ n: "Nina", l: "Regular" }], pilates: [] },
-    promo: { yoga: "New student 2 weeks" },
-    social: { instagram: "@stillpointatx" },
-  },
-  {
-    id: "g17", name: "Coreline Reformer", sports: ["pilates"], mi: 1.6, open: true,
-    tags: { pilates: ["Reformer", "Classes today", "Private"] },
-    amenities: ["reformer", "studio"],
-    next: { pilates: "Reformer L2 · 5:45 PM" },
-    hours: "Mon–Sat 6a–8p",
-    here: { pilates: [{ n: "Elle", l: "Instructor on floor" }] },
-    promo: { pilates: "Intro 3-pack" },
-    social: { instagram: "@corelinereformer", facebook: "CorelinePilates" },
-  },
-  {
-    id: "g9", name: "Trailhead Run Club", sports: ["running"], mi: 0.5, open: true,
-    tags: { running: ["Group runs", "Trail"] },
-    amenities: ["meet"],
-    next: { running: "Easy 5K · 6:30 AM" },
-    hours: "Meet-ups posted weekly",
-    here: { running: [] },
-    promo: {},
-    social: { instagram: "@trailheadrun" },
-  },
-  {
-    id: "g10", name: "Volt Cycle Collective", sports: ["cycling"], mi: 1.9, open: true,
-    tags: { cycling: ["Club HQ", "Group rides", "Bike shop"] },
-    amenities: ["shop", "club"],
-    next: { cycling: "Saturday group ride · 7:30 AM" },
-    hours: "Shop Tue–Sun 10a–7p",
-    here: { cycling: [{ n: "Casey", l: "Cat 4" }] },
-    promo: {},
-    social: { instagram: "@voltcycle" },
-  },
-  {
-    id: "g18", name: "Baseline Tennis Club", sports: ["tennis", "pickleball"], mi: 4.2, open: true,
-    tags: { tennis: ["Hardcourt", "Clinics", "Ladder"], pickleball: ["Open play"] },
-    amenities: ["courts"],
-    next: { tennis: "USTA ladder · Tue 6p", pickleball: "Open play · Sun 9a" },
-    hours: "Daily 7a–9p",
-    here: { tennis: [{ n: "Priya", l: "NTRP 4.0" }], pickleball: [] },
-    promo: {},
-    social: { instagram: "@baselinetennis" },
-  },
-  {
-    id: "g19", name: "Hardwood Open Gym", sports: ["basketball", "volleyball"], mi: 2.4, open: true,
-    tags: {
-      basketball: ["Open gym", "Full court", "Classes"],
-      volleyball: ["Open gym", "Indoor"],
-    },
-    amenities: ["court"],
-    next: { basketball: "Open run · 7:00 PM", volleyball: "Coed open · 8p" },
-    hours: "Mon–Fri 5p–10p · Sat 9a–6p",
-    here: { basketball: [{ n: "Jay", l: "Rec" }], volleyball: [] },
-    promo: {},
-    social: { instagram: "@hardwoodopen" },
-  },
-  {
-    id: "g20", name: "Pitchside Futsal", sports: ["soccer"], mi: 3.6, open: true,
-    tags: { soccer: ["Futsal", "Pick-up", "League"] },
-    amenities: ["court"],
-    next: { soccer: "Pick-up · 8:00 PM" },
-    hours: "Daily 4p–11p",
-    here: { soccer: [{ n: "Mateo", l: "Rec" }] },
-    promo: { soccer: "League registration open" },
-    social: { instagram: "@pitchsidefutsal" },
-  },
-  {
-    id: "g12", name: "Forge Hybrid", sports: ["crossfit", "weightlifting", "bjj", "hyrox"], mi: 6.4, open: false,
-    tags: {
-      crossfit: ["Rig", "WOD"],
-      weightlifting: ["Platforms"],
-      bjj: ["Fundamentals", "Mats"],
-      hyrox: ["Sled / stations"],
-    },
-    amenities: ["racks", "mats", "rig", "platforms", "sled"],
-    next: {
-      crossfit: "Opens 5:00 AM",
-      weightlifting: "Opens 5:00 AM",
-      bjj: "Noon fundamentals",
-      hyrox: "Engine · 6a",
-    },
-    hours: "Mon–Fri 5a–9p",
-    here: { crossfit: [], weightlifting: [], bjj: [], hyrox: [] },
-    promo: {},
-    social: {},
-  },
-];
+/** Live venues only — populated by places-live.js (OSM / Google / Geoapify). Never use fake gyms. */
+const GYMS = [];
 
-const PARTNERS = [
-  { id: "p1", name: "Maya R.", sport: "bjj", level: "Blue belt", mi: 0.9, intent: "Rolling", age: "adult" },
-  { id: "p2", name: "Chris K.", sport: "bjj", level: "Purple belt", mi: 1.2, intent: "Open mat", age: "adult" },
-  { id: "p3", name: "Tyler", sport: "bjj", level: "Yellow belt", mi: 1.5, intent: "Drilling", age: "teen" },
-  { id: "p3b", name: "Dani", sport: "bjj", level: "Orange belt", mi: 0.7, intent: "Competition drill", age: "teen" },
-  { id: "p3c", name: "Sam Jr.", sport: "bjj", level: "Green belt", mi: 0.8, intent: "Rolling", age: "teen" },
-  { id: "p4", name: "Sam O.", sport: "weightlifting", level: "Intermediate", mi: 2.0, intent: "Session partner", age: "adult" },
-  { id: "p5", name: "Dez M.", sport: "mma", level: "Intermediate", mi: 1.1, intent: "Light spar", age: "adult" },
-  { id: "p6", name: "Jordan L.", sport: "bjj", level: "White · 4 stripe", mi: 2.4, intent: "Fundamentals", age: "adult" },
-  { id: "p7", name: "Ava", sport: "wrestling", level: "HS", mi: 3.0, intent: "Live goes", age: "teen" },
-  { id: "p8", name: "Riley P.", sport: "climbing", level: "V4–V5", mi: 2.5, intent: "Boulder session", age: "adult" },
-  { id: "p9", name: "Pat S.", sport: "boxing", level: "Novice", mi: 3.1, intent: "Mitt work", age: "adult" },
-  { id: "p10", name: "Nina V.", sport: "yoga", level: "Vinyasa", mi: 1.0, intent: "Practice buddy", age: "adult" },
-  { id: "p11", name: "Leo", sport: "bjj", level: "Orange belt", mi: 0.7, intent: "Rolling", age: "teen" },
-  { id: "p12", name: "Kai W.", sport: "crossfit", level: "Rx", mi: 2.2, intent: "WOD partner", age: "adult" },
-  { id: "p13", name: "Morgan", sport: "running", level: "8:30/mi", mi: 0.6, intent: "Easy run", age: "adult" },
-  { id: "p14", name: "Quinn", sport: "swimming", level: "Masters", mi: 4.8, intent: "Lane partner", age: "adult" },
-  { id: "p15", name: "Casey B.", sport: "cycling", level: "Cat 4", mi: 1.8, intent: "Group ride", age: "adult" },
-  { id: "p16", name: "Bee T.", sport: "muaythai", level: "Fight team", mi: 2.0, intent: "Pads", age: "adult" },
-  { id: "p17", name: "Nova", sport: "muaythai", level: "Intermediate", mi: 2.4, intent: "Clinch drill", age: "adult" },
-  { id: "p18", name: "Ava P.", sport: "pickleball", level: "DUPR 3.8", mi: 1.1, intent: "Open play", age: "adult" },
-  { id: "p19", name: "Sam D.", sport: "pickleball", level: "DUPR 4.1", mi: 1.3, intent: "Ladder doubles", age: "adult" },
-  { id: "p20", name: "Lee K.", sport: "pickleball", level: "DUPR 3.2", mi: 2.9, intent: "Social games", age: "adult" },
-  { id: "p21", name: "Kai H.", sport: "hyrox", level: "Pro doubles", mi: 2.7, intent: "Race partner", age: "adult" },
-  { id: "p22", name: "Rae", sport: "hyrox", level: "Open", mi: 3.1, intent: "Sim day", age: "adult" },
-  { id: "p23", name: "Priya", sport: "tennis", level: "NTRP 4.0", mi: 4.0, intent: "Hitting", age: "adult" },
-  { id: "p24", name: "Jay", sport: "basketball", level: "Rec", mi: 2.3, intent: "Full court", age: "adult" },
-  { id: "p25", name: "Mateo", sport: "soccer", level: "Rec", mi: 3.5, intent: "Pick-up", age: "adult" },
-  { id: "p26", name: "Elle", sport: "pilates", level: "Reformer L2", mi: 1.5, intent: "Studio buddy", age: "adult" },
-  { id: "p27", name: "Hiro", sport: "judo", level: "Brown belt", mi: 1.0, intent: "Randori", age: "adult" },
-  { id: "p28", name: "Sasha", sport: "kickboxing", level: "Intermediate", mi: 3.0, intent: "Spar", age: "adult" },
-  { id: "p29", name: "Val", sport: "volleyball", level: "BB", mi: 2.5, intent: "Open gym", age: "adult" },
-];
+/** Real partners require signed-in users (Supabase). Empty until network exists. */
+const PARTNERS = [];
 
-/** Events / tournaments — intelligent feed mock (sport-scoped)
- * kind: tournament | open_mat | race | class_series | league | fight | live
- * notify: user can toggle in UI
- * deep: only full-depth sports get rich sets
- */
-const EVENTS = [
-  // BJJ full — generic academies (no club trademarks)
-  { id: "e0", sport: "bjj", kind: "class_series", title: "Kids + fundamentals block", when: "Weeknights · 5:30 PM", where: "Northside Mat Club", mi: 0.6, live: false, reg: "Members", source: "Gym schedule", deep: true },
-  { id: "e0b", sport: "bjj", kind: "open_mat", title: "Saturday open mat", when: "Sat · 10:00 AM", where: "Northside Mat Club", mi: 0.6, live: false, reg: null, source: "Gym feed", deep: true },
-  { id: "e0c", sport: "bjj", kind: "tournament", title: "Kids local tournament", when: "Sat Mar 7 · weigh-ins 8a", where: "Regional venue", mi: 12, live: false, reg: "Coach list due Fri", source: "Local org + IBJJF-style", deep: true },
-  { id: "e1", sport: "bjj", kind: "tournament", title: "IBJJF Austin Open", when: "Sat Mar 14 · 9:00 AM", where: "Convention Center", mi: 4.2, live: false, reg: "Registration closes Mar 1", source: "IBJJF calendar webhook", deep: true },
-  { id: "e2", sport: "bjj", kind: "tournament", title: "NAGA Texas", when: "Sun Apr 5 · 8:00 AM", where: "Houston", mi: 162, live: false, reg: "Early bird ends Mar 10", source: "NAGA feed", deep: true },
-  { id: "e3", sport: "bjj", kind: "open_mat", title: "Traveler open mat", when: "Sat · 11:00 AM", where: "Alliance Austin", mi: 2.8, live: false, reg: null, source: "Gym IG webhook", deep: true },
-  { id: "e4", sport: "bjj", kind: "live", title: "Open mat in progress", when: "LIVE now", where: "Northside Mat Club", mi: 0.6, live: true, reg: null, source: "Check-in realtime", deep: true },
-  { id: "e5", sport: "bjj", kind: "class_series", title: "Competition class", when: "Mon/Wed · 6:30 PM", where: "Riverside Grappling", mi: 1.1, live: false, reg: "Members + drop-in", source: "Gym schedule API", deep: true },
-  { id: "e6", sport: "bjj", kind: "tournament", title: "Kids belt testing", when: "Fri · 5:00 PM", where: "Northside Mat Club", mi: 0.6, live: false, reg: "Coach invite", source: "Gym webhook", deep: true },
+/** Real events: gym webhooks, federation calendars, user posts — no invented cards. */
+const EVENTS = [];
 
-  // Pickleball full
-  { id: "e10", sport: "pickleball", kind: "tournament", title: "ATX Open Doubles (DUPR)", when: "Sat Mar 21 · 8:00 AM", where: "Kitchen Pickle Club", mi: 1.2, live: false, reg: "Closes Mar 12", source: "DUPR / club webhook", deep: true },
-  { id: "e11", sport: "pickleball", kind: "open_mat", title: "Open play · all levels", when: "Today · 11:00 AM–2:00 PM", where: "Kitchen Pickle Club", mi: 1.2, live: false, reg: null, source: "Club schedule", deep: true },
-  { id: "e12", sport: "pickleball", kind: "league", title: "Wednesday ladder night", when: "Wed · 6:30 PM", where: "Dink & Drive", mi: 3.0, live: false, reg: "Walk-on OK", source: "Club feed", deep: true },
-  { id: "e13", sport: "pickleball", kind: "live", title: "Courts busy · 6 waiting", when: "LIVE now", where: "Kitchen Pickle Club", mi: 1.2, live: true, reg: null, source: "Check-in + court sensors mock", deep: true },
-  { id: "e14", sport: "pickleball", kind: "tournament", title: "PPA Tour watch party", when: "Sun · 2:00 PM", where: "Kitchen Pickle Club", mi: 1.2, live: false, reg: "Free", source: "Club IG", deep: true },
+/** Social feed fills when users follow real venues / webhooks. */
+const SOCIAL_POSTS = [];
 
-  // Muay Thai full
-  { id: "e20", sport: "muaythai", kind: "fight", title: "Friday smoker card", when: "Fri · 7:30 PM", where: "Sitsiemu Muay Thai", mi: 2.0, live: false, reg: "Spectators welcome", source: "Gym webhook", deep: true },
-  { id: "e21", sport: "muaythai", kind: "class_series", title: "Pad class · all levels", when: "Tonight · 6:00 PM", where: "Sitsiemu", mi: 2.0, live: false, reg: null, source: "Schedule API", deep: true },
-  { id: "e22", sport: "muaythai", kind: "fight", title: "Regional fight team call", when: "Sat Apr 18", where: "Dallas", mi: 195, live: false, reg: "Coach nomination", source: "Federation feed", deep: true },
-  { id: "e23", sport: "muaythai", kind: "live", title: "Pads class · 9 checked in", when: "LIVE now", where: "Sitsiemu", mi: 2.0, live: true, reg: null, source: "Check-in realtime", deep: true },
+/** Gear shops: prefer live OSM/Google later; empty beats fake storefronts. */
+const SHOPS = [];
 
-  // HYROX full
-  { id: "e30", sport: "hyrox", kind: "race", title: "HYROX Austin", when: "Sat May 9 · waves from 8a", where: "Circuit venue", mi: 8.0, live: false, reg: "Doubles still open", source: "HYROX official feed", deep: true },
-  { id: "e31", sport: "hyrox", kind: "class_series", title: "Race sim · 8 stations", when: "Thu · 5:30 PM", where: "Station One", mi: 2.8, live: false, reg: "Book class", source: "Gym API", deep: true },
-  { id: "e32", sport: "hyrox", kind: "race", title: "HYROX Dallas", when: "Sat Jun 13", where: "Dallas", mi: 195, live: false, reg: "Early bird", source: "HYROX feed", deep: true },
-  { id: "e33", sport: "hyrox", kind: "live", title: "Sim day in progress", when: "LIVE now", where: "Station One", mi: 2.8, live: true, reg: null, source: "Check-in", deep: true },
-
-  // Template sports — lighter event seeds
-  { id: "e40", sport: "mma", kind: "fight", title: "Local fight night watch", when: "Sat · 8:00 PM", where: "Alliance Austin", mi: 0.8, live: false, reg: null, source: "Gym post", deep: false },
-  { id: "e41", sport: "boxing", kind: "fight", title: "Amateur show", when: "Fri · 7:00 PM", where: "Round One", mi: 3.2, live: false, reg: "Doors 6p", source: "Gym feed", deep: false },
-  { id: "e42", sport: "tennis", kind: "league", title: "USTA ladder night", when: "Tue · 6:00 PM", where: "Baseline", mi: 4.2, live: false, reg: null, source: "Club schedule", deep: false },
-  { id: "e43", sport: "basketball", kind: "open_mat", title: "Open run full court", when: "Tonight · 7:00 PM", where: "Hardwood", mi: 2.4, live: false, reg: null, source: "Gym feed", deep: false },
-  { id: "e44", sport: "soccer", kind: "league", title: "Futsal league kickoff", when: "Mon · 8:00 PM", where: "Pitchside", mi: 3.6, live: false, reg: "Teams forming", source: "Club webhook", deep: false },
-  { id: "e45", sport: "volleyball", kind: "tournament", title: "Coed tournament", when: "Sun · 9:00 AM", where: "Hardwood", mi: 2.4, live: false, reg: "Register by Fri", source: "Gym feed", deep: false },
-  { id: "e46", sport: "pilates", kind: "class_series", title: "Reformer workshop", when: "Sun · 10:00 AM", where: "Coreline", mi: 1.6, live: false, reg: "6 spots left", source: "Studio webhook", deep: false },
-  { id: "e47", sport: "yoga", kind: "class_series", title: "Community flow", when: "Sun · 9:00 AM", where: "Still Point", mi: 1.1, live: false, reg: "Donation", source: "Studio IG", deep: false },
-  { id: "e48", sport: "running", kind: "race", title: "City 10K", when: "Sun Apr 12 · 7:00 AM", where: "Downtown", mi: 3.0, live: false, reg: "Open", source: "Race calendar", deep: false },
-  { id: "e49", sport: "cycling", kind: "race", title: "Volt coffee ride 40mi", when: "Sat · 7:30 AM", where: "Volt Collective", mi: 1.9, live: false, reg: null, source: "Club feed", deep: false },
-  { id: "e50", sport: "climbing", kind: "tournament", title: "Beta night / comp", when: "Wed · 7:00 PM", where: "Crux", mi: 2.6, live: false, reg: "Day pass", source: "Gym feed", deep: false },
-  { id: "e51", sport: "swimming", kind: "class_series", title: "Masters set", when: "Mon · 6:00 AM", where: "Lane 8", mi: 5.1, live: false, reg: null, source: "Pool schedule", deep: false },
-  { id: "e52", sport: "judo", kind: "tournament", title: "Local shiai", when: "Sat Mar 28", where: "Dojo district", mi: 6.0, live: false, reg: "Weigh-ins 8a", source: "Federation", deep: false },
-  { id: "e53", sport: "kickboxing", kind: "fight", title: "Amateur card", when: "Fri · 8:00 PM", where: "Round One", mi: 3.2, live: false, reg: null, source: "Gym feed", deep: false },
-  { id: "e54", sport: "crossfit", kind: "race", title: "Partner WOD Saturday", when: "Sat · 9:00 AM", where: "Iron Temple", mi: 2.1, live: false, reg: null, source: "Box feed", deep: false },
-  { id: "e55", sport: "weightlifting", kind: "tournament", title: "Local meet", when: "Sun Apr 19", where: "Iron Temple", mi: 2.1, live: false, reg: "Entries open", source: "USAW mock", deep: false },
-  { id: "e56", sport: "wrestling", kind: "open_mat", title: "Open mat · Matador", when: "Wed · 7:00 PM", where: "Matador", mi: 4.0, live: false, reg: null, source: "Club", deep: false },
-];
-
-/** Social posts from followed gyms / athletes (webhook-ingested mock) */
-const SOCIAL_POSTS = [
-  { id: "s0", sport: "bjj", platform: "instagram", author: "Northside Mat Club", handle: "@northsidematclub", body: "Oss! Kids class crushed it tonight — see you Saturday open mat.", when: "1h ago", followed: true },
-  { id: "s1", sport: "bjj", platform: "instagram", author: "Alliance Austin", handle: "@allianceaustin", body: "Open mat Saturday 11am — travelers welcome. Gi & no-gi.", when: "2h ago", followed: true },
-  { id: "s2", sport: "bjj", platform: "instagram", author: "IBJJF", handle: "@ibjjf", body: "Austin Open registration reminder — brackets lock soon.", when: "5h ago", followed: true },
-  { id: "s3", sport: "bjj", platform: "facebook", author: "Riverside Grappling", handle: "Riverside Grappling", body: "Belt testing Friday 5pm. Parents welcome on the mats edge.", when: "1d ago", followed: true },
-  { id: "s4", sport: "pickleball", platform: "instagram", author: "Kitchen Pickle", handle: "@kitchenpickle", body: "Open play starting now. 6 courts live. DUPR ladder tonight.", when: "40m ago", followed: true },
-  { id: "s5", sport: "pickleball", platform: "facebook", author: "Dink & Drive", handle: "Dink & Drive ATX", body: "Newbie night Wednesday — paddles available.", when: "3h ago", followed: true },
-  { id: "s6", sport: "muaythai", platform: "instagram", author: "Sitsiemu", handle: "@sitsiemuatx", body: "Friday smoker card is set. Spectators free after 7.", when: "1h ago", followed: true },
-  { id: "s7", sport: "muaythai", platform: "instagram", author: "Bee T.", handle: "@beemuay", body: "Looking for clinch rounds after pads tonight.", when: "3h ago", followed: true },
-  { id: "s8", sport: "hyrox", platform: "instagram", author: "Station One", handle: "@stationonehyrox", body: "Sim day LIVE — sleds hot. Doubles partners still needed for May.", when: "25m ago", followed: true },
-  { id: "s9", sport: "hyrox", platform: "facebook", author: "HYROX", handle: "HYROX Official", body: "Austin race waves published. Check your email.", when: "6h ago", followed: true },
-  { id: "s10", sport: "tennis", platform: "instagram", author: "Baseline", handle: "@baselinetennis", body: "Ladder night Tuesday — challenge board is up.", when: "4h ago", followed: false },
-  { id: "s11", sport: "pilates", platform: "instagram", author: "Coreline", handle: "@corelinereformer", body: "Reformer L2 has 2 spots left at 5:45.", when: "1h ago", followed: true },
-  { id: "s12", sport: "soccer", platform: "instagram", author: "Pitchside", handle: "@pitchsidefutsal", body: "Pick-up full tonight — waitlist open in app.", when: "2h ago", followed: false },
-];
-
-const SHOPS = [
-  { id: "s1", name: "Submission Supply", sports: ["bjj", "mma", "judo", "muaythai"], mi: 1.8, note: "Gis, rashguards, tape" },
-  { id: "s2", name: "Iron Path Gear", sports: ["weightlifting", "crossfit", "hyrox"], mi: 2.3, note: "Belts, shoes, race kit" },
-  { id: "s3", name: "Crag & Rope", sports: ["climbing"], mi: 2.7, note: "Shoes, chalk" },
-  { id: "s4", name: "Stride Lab", sports: ["running"], mi: 1.2, note: "Shoes, gait" },
-  { id: "s5", name: "Flow Outfitters", sports: ["yoga", "pilates", "swimming"], mi: 1.5, note: "Mats, grip socks" },
-  { id: "s6", name: "Ring Side Outfitters", sports: ["boxing", "mma", "wrestling", "muaythai", "kickboxing"], mi: 3.4, note: "Gloves, shins" },
-  { id: "s7", name: "Volt Cycle Collective", sports: ["cycling"], mi: 1.9, note: "Bikes, kits" },
-  { id: "s8", name: "Court & Kitchen Gear", sports: ["pickleball", "tennis"], mi: 1.3, note: "Paddles, balls, shoes" },
-  { id: "s9", name: "Hardwood Pro Shop", sports: ["basketball", "volleyball"], mi: 2.5, note: "Balls, shoes" },
-  { id: "s10", name: "Pitch Kit", sports: ["soccer"], mi: 3.4, note: "Boots, futsal balls" },
-];
-
-const NEEDS = [
-  { id: "n1", sport: "bjj", kind: "want", title: "A2 gi (used OK)", who: "Chris", mi: 1.2 },
-  { id: "n2", sport: "bjj", kind: "have", title: "Extra mouthguard · new", who: "Maya", mi: 0.9 },
-  { id: "n3", sport: "pickleball", kind: "want", title: "Paddle demo · control", who: "Ava", mi: 1.1 },
-  { id: "n4", sport: "pickleball", kind: "have", title: "Outdoor balls (new can)", who: "Lee", mi: 2.9 },
-  { id: "n5", sport: "muaythai", kind: "want", title: "Shin guards M", who: "Nova", mi: 2.4 },
-  { id: "n6", sport: "hyrox", kind: "want", title: "Race belt / hydration", who: "Rae", mi: 3.1 },
-  { id: "n7", sport: "weightlifting", kind: "want", title: "Knee sleeves M", who: "Sam", mi: 2.0 },
-  { id: "n8", sport: "climbing", kind: "have", title: "Shoes 42 EU", who: "Riley", mi: 2.5 },
-  { id: "n9", sport: "tennis", kind: "want", title: "Hitting partner + balls", who: "Priya", mi: 4.0 },
-  { id: "n10", sport: "pilates", kind: "want", title: "Grip socks M", who: "Elle", mi: 1.5 },
-];
+/** Gear wants/haves need real users. */
+const NEEDS = [];
 
 /** Default profile social graph + webhook endpoints (prototype) */
 const PROFILE_DEFAULT = {
   displayName: "Vlad",
-  area: "Austin area",
+  area: "Near you",
   ageBand: "Adult",
   sports: [
     { id: "bjj", level: "Blue belt" },
@@ -769,10 +416,7 @@ const PROFILE_DEFAULT = {
   /** First-choice sport — feed + home lean hard this way without locking other sports */
   primarySportId: "bjj",
   /** Saved venues (user-pinned) */
-  favorites: [
-    { gymId: "g0", name: "Northside Mat Club", sport: "bjj" },
-    { gymId: "g13", name: "Kitchen Pickle Club", sport: "pickleball" },
-  ],
+  favorites: [],
   /**
    * Stay in the loop — product prefs (push later; feed uses these now)
    */

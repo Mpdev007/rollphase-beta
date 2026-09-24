@@ -68,23 +68,22 @@ function renderBetaGate() {
 
         <h2>What you can try</h2>
         <ul>
-          <li><strong>Discover venues</strong> near you — hours, specialties, who’s training, schedules.</li>
-          <li><strong>Find partners</strong> at your level for the sport you care about.</li>
-          <li><strong>Events &amp; live pulse</strong> — tournaments, open mats, classes, who’s here now.</li>
-          <li><strong>Rate gyms</strong> after you train so other athletes get real signal.</li>
-          <li><strong>I represent…</strong> — your club name, colors, and crest (yours to personalize).</li>
-          <li><strong>Multi-sport life</strong> — yoga today, boxing tomorrow. Nothing forces one sport forever.</li>
+          <li><strong>Discover venues</strong> near you — real places, distance, phone, website when available.</li>
+          <li><strong>Multi-sport focus</strong> — train BJJ one day, lift the next. Switch anytime.</li>
+          <li><strong>Save places</strong> and check in so reviews can be visit-trusted.</li>
+          <li><strong>I represent…</strong> — your club name, colors, and crest (yours only).</li>
+          <li><strong>Partners &amp; events</strong> — rolling out as the community grows.</li>
         </ul>
 
         <h2>Please acknowledge</h2>
         <ul>
-          <li><strong>Early access</strong> — features and sample content may change; some listings are for demo purposes.</li>
+          <li><strong>Closed beta</strong> — features improve often; some areas (partners, events) fill in as people join.</li>
           <li><strong>Train safely</strong> — meeting people or visiting gyms is at your own risk. Use real-world judgment.</li>
-          <li><strong>Age-aware matching</strong> — youth and adult partner discovery are separated for safety.</li>
+          <li><strong>Age-aware matching</strong> — youth and adult partner discovery stay separated for safety.</li>
           <li><strong>Your brands</strong> — only upload logos and names you have rights to use.</li>
-          <li><strong>No false affiliations</strong> — RollPhase is independent; example events or orgs in the feed are illustrative, not endorsements.</li>
-          <li><strong>Your privacy</strong> — beta preferences stay on this device unless you choose to send feedback with contact info.</li>
-          <li><strong>Feedback welcome</strong> — use <em>Feedback</em> anytime after you enter.</li>
+          <li><strong>Independent</strong> — RollPhase isn’t affiliated with any single gym brand or federation.</li>
+          <li><strong>Your privacy</strong> — preferences stay on this device unless you send feedback with contact info.</li>
+          <li><strong>Feedback welcome</strong> — use Feedback anytime after you enter.</li>
         </ul>
 
         <h2>About you (optional)</h2>
@@ -122,7 +121,31 @@ function renderBetaGate() {
   return false;
 }
 
-function openFeedbackSheet() {
+function betaPushOverlay(name) {
+  try {
+    const tab =
+      (typeof state !== "undefined" && state.tab) ||
+      document.querySelector(".tab.active")?.dataset?.tab ||
+      "home";
+    history.pushState({ rp: 1, view: "overlay", name, tab }, "", `#/${tab}/${name}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+function betaCloseOverlay(sheet) {
+  if (!sheet) return;
+  const isHist =
+    history.state?.view === "overlay" &&
+    (history.state?.name === "feedback" || history.state?.name === "about");
+  if (isHist) {
+    history.back();
+    return;
+  }
+  sheet.remove();
+}
+
+function openFeedbackSheet(opts = {}) {
   document.getElementById("feedbackSheet")?.remove();
   const ack = loadBetaAck() || {};
   const sheet = document.createElement("div");
@@ -169,18 +192,12 @@ function openFeedbackSheet() {
     </div>
   `;
   document.body.appendChild(sheet);
+  if (opts.historyMode !== "none") betaPushOverlay("feedback");
   sheet.addEventListener("click", (e) => {
-    if (e.target === sheet) sheet.remove();
+    if (e.target === sheet) betaCloseOverlay(sheet);
   });
-  sheet.querySelector("#fbCancel")?.addEventListener("click", () => sheet.remove());
+  sheet.querySelector("#fbCancel")?.addEventListener("click", () => betaCloseOverlay(sheet));
   sheet.querySelector("#fbSubmit")?.addEventListener("click", () => submitFeedback(sheet));
-}
-
-function escapeAttr(s) {
-  return String(s || "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
 }
 
 function submitFeedback(sheet) {
@@ -260,7 +277,7 @@ function submitFeedback(sheet) {
   setTimeout(() => sheet.remove(), 1600);
 }
 
-function openAboutSheet() {
+function openAboutSheet(opts = {}) {
   document.getElementById("aboutSheet")?.remove();
   const sheet = document.createElement("div");
   sheet.id = "aboutSheet";
@@ -271,36 +288,92 @@ function openAboutSheet() {
       <h2>About RollPhase</h2>
       <p class="muted small">Closed beta · early access</p>
       <div class="beta-scroll" style="max-height:50vh;margin:12px 0">
-        <p><strong>RollPhase</strong> is a multi-sport training companion. Find places to train, people at your level, events worth showing up for, and gear nearby — then rate venues so the next athlete knows what to expect.</p>
+        <p><strong>RollPhase</strong> helps you find places to train, people at your level, and a cleaner multi-sport flow — then rate venues so the next athlete knows what to expect.</p>
         <p>Use one sport or many. Focus when you want; explore when you don’t. Your club colors and crest stay personal to you.</p>
-        <p>This is a closed beta. Content and features will grow. Train smart, be respectful, and tell us what matters with <strong>Feedback</strong>.</p>
+        <p>This is a closed beta. Features grow with the community. Train smart, be respectful, and tell us what matters with <strong>Feedback</strong>.</p>
+        <p class="muted small">If an update is available, you’ll see a prompt to restart. You can also refresh from Settings.</p>
       </div>
-      <button type="button" class="btn-ghost" id="aboutClose" style="width:100%;padding:12px">Close</button>
+      <p class="muted small" id="appBuildLabelAbout" style="margin:8px 0 12px"></p>
+      <button type="button" class="btn-primary" id="aboutGetLatest" style="width:100%;padding:12px">Refresh app</button>
+      <button type="button" class="btn-ghost" id="aboutClose" style="width:100%;padding:12px;margin-top:8px">Close</button>
+      <button type="button" class="btn-ghost" id="aboutCheckUpdate" style="width:100%;padding:12px;margin-top:8px">Check for update</button>
       <button type="button" class="btn-ghost" id="aboutReset" style="width:100%;padding:12px;margin-top:8px">Show welcome again</button>
     </div>
   `;
   document.body.appendChild(sheet);
+  if (opts.historyMode !== "none") betaPushOverlay("about");
+  if (typeof UpdateCheck !== "undefined") {
+    try {
+      UpdateCheck.paintBuildLabel();
+    } catch {
+      /* ignore */
+    }
+  }
   sheet.addEventListener("click", (e) => {
-    if (e.target === sheet) sheet.remove();
+    if (e.target === sheet) betaCloseOverlay(sheet);
   });
-  sheet.querySelector("#aboutClose")?.addEventListener("click", () => sheet.remove());
+  sheet.querySelector("#aboutClose")?.addEventListener("click", () => betaCloseOverlay(sheet));
+  sheet.querySelector("#aboutGetLatest")?.addEventListener("click", () => {
+    if (typeof UpdateCheck !== "undefined") {
+      UpdateCheck.getLatest({ force: true });
+    } else {
+      location.reload();
+    }
+  });
+  sheet.querySelector("#aboutCheckUpdate")?.addEventListener("click", async () => {
+    if (typeof UpdateCheck !== "undefined") {
+      const result = await UpdateCheck.check({ forceBanner: true });
+      if (result === "current" && !document.getElementById("updateBanner")) {
+        alert(
+          window.ROLLPHASE_BUILD?.version
+            ? `You’re on the latest version (${window.ROLLPHASE_BUILD.version}).`
+            : "You’re on the latest version."
+        );
+      }
+      if (result === "update") betaCloseOverlay(sheet);
+    } else {
+      location.reload();
+    }
+  });
   sheet.querySelector("#aboutReset")?.addEventListener("click", () => {
     localStorage.removeItem(BETA.storageKey);
     location.reload();
   });
 }
 
+function escapeAttr(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
 function injectBetaChrome() {
-  if (document.getElementById("betaChrome")) return;
-  const chrome = document.createElement("div");
-  chrome.id = "betaChrome";
-  chrome.innerHTML = `
-    <button type="button" id="btnFeedback" title="Send feedback">Feedback</button>
-    <button type="button" id="btnAbout" title="About">About</button>
-  `;
-  document.body.appendChild(chrome);
-  document.getElementById("btnFeedback")?.addEventListener("click", openFeedbackSheet);
-  document.getElementById("btnAbout")?.addEventListener("click", openAboutSheet);
+  let chrome = document.getElementById("betaChrome");
+  if (!chrome) {
+    chrome = document.createElement("div");
+    chrome.id = "betaChrome";
+    document.body.appendChild(chrome);
+  }
+  // Preserve Get latest if update-check already injected it
+  if (!document.getElementById("btnFeedback")) {
+    const fb = document.createElement("button");
+    fb.type = "button";
+    fb.id = "btnFeedback";
+    fb.title = "Send feedback";
+    fb.textContent = "Feedback";
+    fb.addEventListener("click", openFeedbackSheet);
+    chrome.appendChild(fb);
+  }
+  if (!document.getElementById("btnAbout")) {
+    const ab = document.createElement("button");
+    ab.type = "button";
+    ab.id = "btnAbout";
+    ab.title = "About";
+    ab.textContent = "About";
+    ab.addEventListener("click", openAboutSheet);
+    chrome.appendChild(ab);
+  }
 }
 
 function initBeta() {

@@ -9,6 +9,8 @@ const state = {
   rankFilter: "all",
   gearMode: "shops",
   feedMode: "foryou",
+  /** profile main vs nested settings (colors / fine-tune) */
+  profilePanel: "main",
   agePool: "adult",
   openToTrain: true,
   checkedInGym: null,
@@ -17,6 +19,20 @@ const state = {
   mode: "athlete",
   profile: safeClone(typeof PROFILE_DEFAULT !== "undefined" ? PROFILE_DEFAULT : emptyProfile()),
   _rendering: false,
+  /** Live venues from PlacesLive — never fake stubs */
+  live: {
+    places: [],
+    provider: null,
+    sources: [],
+    loading: false,
+    error: null,
+    lat: null,
+    lng: null,
+    label: null,
+    accuracy: null,
+    lastSport: undefined,
+    lastFetchedAt: null,
+  },
 };
 
 function emptyProfile() {
@@ -24,6 +40,7 @@ function emptyProfile() {
     displayName: "Guest",
     area: "",
     ageBand: "Adult",
+    photoDataUrl: null,
     sports: [],
     primarySportId: null,
     favorites: [],
@@ -393,6 +410,10 @@ function setSport(id) {
   applySkin(id || null);
   state.checkedInGym = null;
   safeRenderAll();
+  // Sport change → re-query live venues for that sport
+  if (typeof PlacesLive !== "undefined") {
+    loadLivePlaces({ force: true, sport: id || null });
+  }
 }
 
 function addSportToProfile(sportId, level = "—") {
@@ -469,56 +490,363 @@ function renderPartnerFilters() {
     .join("");
 }
 
+function allLivePlaces() {
+  return state.live.places || [];
+}
+
+function findGym(id) {
+  return allLivePlaces().find((x) => x.id === id) || null;
+}
+
+/**
+ * Live venues: rank sport matches first, but NEVER hide real gyms when tags are incomplete.
+ * (OSM often lacks "bjj" tags — filtering them out made the list look empty/fake.)
+ */
 function gymsForSport(sport = focusId()) {
-  if (!sport) {
-    // Explore: nearest venues across sports (dedupe by id)
-    return [...GYMS].sort((a, b) => a.mi - b.mi);
+  const list = [...allLivePlaces()];
+  if (!sport) return list.sort((a, b) => a.mi - b.mi);
+  return list.sort((a, b) => {
+    const am = (a.sports || []).includes(sport) ? 0 : 1;
+    const bm = (b.sports || []).includes(sport) ? 0 : 1;
+    if (am !== bm) return am - bm;
+    return a.mi - b.mi;
+  });
+}
+
+/** Product-facing label only — never expose stack/provider names in UI */
+function providerLabel(_provider) {
+  return "Near you";
+}
+
+/** Leaflet map instance for gyms tab */
+let liveMap = null;
+let liveMapMarkers = [];
+
+function destroyLiveMap() {
+  if (liveMap) {
+    try {
+      liveMap.remove();
+    } catch {
+      /* ignore */
+    }
   }
-  return GYMS.filter((g) => g.sports.includes(sport)).sort((a, b) => a.mi - b.mi);
+  liveMap = null;
+  liveMapMarkers = [];
+}
+
+function ensureLiveMap() {
+  const el = document.getElementById("liveMap");
+  if (!el || typeof L === "undefined") return null;
+  if (liveMap) {
+    setTimeout(() => liveMap.invalidateSize(), 80);
+    return liveMap;
+  }
+  // Never invent a city — only center when we have real coords
+  const lat = state.live.lat;
+  const lng = state.live.lng;
+  liveMap = L.map(el, {
+    zoomControl: true,
+    attributionControl: true,
+  }).setView(lat != null && lng != null ? [lat, lng] : [20, 0], lat != null ? 12 : 2);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(liveMap);
+  setTimeout(() => liveMap.invalidateSize(), 100);
+  return liveMap;
+}
+
+function renderLiveMap(list) {
+  const map = ensureLiveMap();
+  if (!map) return;
+  liveMapMarkers.forEach((m) => {
+    try {
+      map.removeLayer(m);
+    } catch {
+      /* ignore */
+    }
+  });
+  liveMapMarkers = [];
+  const bounds = [];
+  if (state.live.lat != null && state.live.lng != null) {
+    const you = L.circleMarker([state.live.lat, state.live.lng], {
+      radius: 8,
+      color: "#2ee6c5",
+      fillColor: "#2ee6c5",
+      fillOpacity: 0.9,
+      weight: 2,
+    }).addTo(map);
+    you.bindPopup("You are here");
+    liveMapMarkers.push(you);
+    bounds.push([state.live.lat, state.live.lng]);
+  }
+  list.forEach((g) => {
+    if (g.lat == null || g.lng == null) return;
+    const m = L.marker([g.lat, g.lng]).addTo(map);
+    const contact = [
+      g.phone ? `☎ ${g.phone}` : null,
+      g.website ? "Website" : null,
+      `${g.mi} mi`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    m.bindPopup(
+      `<strong>${escapeHtml(g.name)}</strong><br/><span style="font-size:12px">${escapeHtml(
+        contact || g.address || "Live venue"
+      )}</span><br/><button type="button" data-map-open="${escapeHtml(
+        g.id
+      )}" style="margin-top:6px">Open</button>`
+    );
+    m.on("popupopen", () => {
+      const root = m.getPopup()?.getElement?.();
+      root?.querySelector("[data-map-open]")?.addEventListener("click", () => {
+        openGymDetail(g.id, { historyMode: "push" });
+      });
+    });
+    liveMapMarkers.push(m);
+    bounds.push([g.lat, g.lng]);
+  });
+  if (bounds.length) {
+    try {
+      map.fitBounds(bounds, { padding: [36, 36], maxZoom: 14 });
+    } catch {
+      /* ignore */
+    }
+  }
+  setTimeout(() => map.invalidateSize(), 120);
+}
+
+/**
+ * Load real venues near the user. Fake GYMS are never used.
+ */
+async function loadLivePlaces(opts = {}) {
+  if (typeof PlacesLive === "undefined") {
+    state.live.error = "Couldn’t load places. Tap Refresh app, then try again.";
+    state.live.loading = false;
+    return;
+  }
+  const sport = opts.sport !== undefined ? opts.sport : focusId();
+  const force = !!opts.force;
+
+  const fresh =
+    state.live.lastFetchedAt &&
+    Date.now() - state.live.lastFetchedAt < 2 * 60 * 1000 &&
+    state.live.lastSport === sport &&
+    state.live.places.length &&
+    !force &&
+    !opts.lat;
+  if (fresh) return;
+
+  state.live.loading = true;
+  state.live.error = null;
+  updateLiveStatusBar();
+  if (state.tab === "gyms") renderGyms();
+  if (state.tab === "home") renderHome();
+
+  try {
+    // Explicit lat/lng (city search) wins
+    if (opts.lat != null && opts.lng != null) {
+      state.live.lat = opts.lat;
+      state.live.lng = opts.lng;
+      state.live.label = opts.label || state.live.label || null;
+      state.live.fromCache = false;
+      if (typeof PlacesLive.saveLastLocation === "function") {
+        PlacesLive.saveLastLocation({
+          lat: opts.lat,
+          lng: opts.lng,
+          label: state.live.label,
+        });
+      }
+    } else if (state.live.lat == null || state.live.lng == null || opts.regeo) {
+      // Warm start from last phone location while GPS resolves
+      if (
+        (state.live.lat == null || state.live.lng == null) &&
+        typeof PlacesLive.loadLastLocation === "function"
+      ) {
+        const cached = PlacesLive.loadLastLocation();
+        if (cached) {
+          state.live.lat = cached.lat;
+          state.live.lng = cached.lng;
+          state.live.label = cached.label || state.live.label;
+          state.live.fromCache = true;
+        }
+      }
+      try {
+        const pos = await PlacesLive.getCurrentPosition({ allowCache: true });
+        state.live.lat = pos.lat;
+        state.live.lng = pos.lng;
+        state.live.accuracy = pos.accuracy;
+        state.live.fromCache = !!pos.fromCache;
+        if (!pos.fromCache || !state.live.label) {
+          try {
+            const label = await PlacesLive.reverseGeocode(pos.lat, pos.lng);
+            if (label) {
+              state.live.label = label;
+              PlacesLive.saveLastLocation?.({
+                lat: pos.lat,
+                lng: pos.lng,
+                accuracy: pos.accuracy,
+                label,
+              });
+            }
+          } catch {
+            /* ignore reverse failures */
+          }
+        }
+        if (pos.permissionDenied && pos.fromCache) {
+          state.live.error =
+            "Using your last area. Turn on Location for this site for a fresh pin.";
+        }
+      } catch (geoErr) {
+        if (state.live.lat == null || state.live.lng == null) {
+          throw geoErr;
+        }
+        state.live.error =
+          "Location is approximate — turn on Location or search a city for a better match.";
+      }
+    }
+
+    if (state.live.lat == null || state.live.lng == null) {
+      throw Object.assign(new Error("No location yet"), { code: 0 });
+    }
+
+    const radiusM =
+      (typeof PlacesLive.config === "function" && PlacesLive.config().defaultRadiusM) || 12000;
+    const { provider, places, sources } = await PlacesLive.fetchNearby({
+      lat: state.live.lat,
+      lng: state.live.lng,
+      radiusM,
+      sportId: sport || null,
+    });
+    state.live.places = places;
+    state.live.provider = provider;
+    state.live.sources = sources || [provider];
+    state.live.lastSport = sport;
+    state.live.lastFetchedAt = Date.now();
+    if (!places.length) {
+      state.live.error =
+        "No venues found in this radius — try a wider city search.";
+    } else if (!state.live.error || !/permission|GPS|secure|blocked/i.test(state.live.error)) {
+      state.live.error = null;
+    }
+  } catch (e) {
+    console.warn("loadLivePlaces", e);
+    const code = e && e.code;
+    if (e && e.secure === false) {
+      state.live.error =
+        "Location needs a secure connection. Open the app from your normal RollPhase link, or search a city.";
+    } else if (code === 1) {
+      state.live.error =
+        "Location is off for this site. Allow it in your phone’s site settings, or type a city below.";
+    } else if (code === 2 || code === 3) {
+      state.live.error =
+        "Couldn’t get your position. Wait a moment, try again, or type a city below.";
+    } else if (code === 0) {
+      state.live.error =
+        "Location isn’t available right now. Type a city below to find venues near there.";
+    } else {
+      state.live.error =
+        "Couldn’t load venues. Check your connection and try Refresh.";
+    }
+  } finally {
+    state.live.loading = false;
+    updateLiveStatusBar();
+    safeRenderAll();
+  }
+}
+
+async function searchCityAndLoad() {
+  const input = $("#citySearchInput");
+  const q = (input?.value || "").trim();
+  if (!q) {
+    state.live.error = "Enter a city or area (e.g. Austin TX, Miami FL).";
+    updateLiveStatusBar();
+    return;
+  }
+  if (typeof PlacesLive === "undefined") return;
+  state.live.loading = true;
+  state.live.error = null;
+  updateLiveStatusBar();
+  try {
+    const place = await PlacesLive.geocodePlace(q);
+    await loadLivePlaces({
+      force: true,
+      lat: place.lat,
+      lng: place.lng,
+      label: place.label,
+    });
+  } catch (e) {
+    state.live.loading = false;
+    state.live.error = e?.message || "Could not find that place.";
+    updateLiveStatusBar();
+    safeRenderAll();
+  }
+}
+
+function updateLiveStatusBar() {
+  const el = $("#livePlacesStatus");
+  if (!el) return;
+  const L = state.live;
+  if (L.loading) {
+    el.innerHTML = `<span class="live-dot"></span> Finding real venues near you…`;
+    el.classList.remove("error");
+    return;
+  }
+  if (L.error && !L.places.length) {
+    el.textContent = L.error;
+    el.classList.add("error");
+    return;
+  }
+  el.classList.remove("error");
+  if (L.places.length) {
+    const where =
+      L.label ||
+      (L.lat != null ? `${L.lat.toFixed(3)}, ${L.lng.toFixed(3)}` : "your area");
+    el.innerHTML = `<span class="live-dot"></span> <strong>${L.places.length} places</strong> · ${escapeHtml(
+      where
+    )}${L.error ? `<br/><span class="err-soft">${escapeHtml(L.error)}</span>` : ""}`;
+  } else {
+    el.textContent = "Use my location or search a city to see real venues nearby.";
+  }
 }
 
 function filterGyms(list) {
   const f = state.gymFilter;
   const sport = focusId();
+  const am = (g) => g.amenities || [];
+  const tagsFor = (g) => (sport ? g.tags?.[sport] || [] : Object.values(g.tags || {}).flat());
   if (f === "all" || f === "near") {
     return f === "near" ? list.filter((g) => g.mi <= 5) : list;
   }
-  if (f === "open") return list.filter((g) => g.open);
+  if (f === "open") return list.filter((g) => g.open !== false);
   if (f === "classes") {
-    if (!sport) return list.filter((g) => Object.values(g.next || {}).some((n) => /class|clinic|WOD|pads|reformer|fundamentals/i.test(n || "")));
-    return list.filter((g) => /class|clinic|WOD|pads|reformer|fundamentals/i.test(g.next[sport] || ""));
+    // Live data rarely has class schedules — keep filter soft (phone/website presence)
+    return list.filter((g) => g.website || g.phone || Object.values(g.next || {}).some(Boolean));
   }
-  const tagHit = (re) => {
-    if (!sport) {
-      return list.filter((g) => Object.values(g.tags || {}).some((arr) => (arr || []).some((t) => re.test(t))));
-    }
-    return list.filter((g) => (g.tags[sport] || []).some((t) => re.test(t)));
-  };
+  const tagHit = (re) => list.filter((g) => tagsFor(g).some((t) => re.test(t)));
   if (f === "openmat") return tagHit(/open mat|open play/i);
   if (f === "gi") return tagHit(/gi|no-gi/i);
-
   if (f === "cage")
-    return list.filter(
-      (g) => g.amenities.includes("cage") || (g.tags[sport] || []).some((t) => /cage/i.test(t))
-    );
+    return list.filter((g) => am(g).includes("cage") || tagsFor(g).some((t) => /cage/i.test(t)));
   if (f === "spar") return tagHit(/spar/i);
-  if (f === "ring") return list.filter((g) => g.amenities.includes("ring"));
-  if (f === "bags") return list.filter((g) => g.amenities.includes("bags"));
-  if (f === "platform") return list.filter((g) => g.amenities.includes("platforms"));
-  if (f === "24h") return list.filter((g) => /24/i.test(g.hours));
-  if (f === "wod") return list.filter((g) => /WOD/i.test(g.next[sport] || ""));
-  if (f === "rig") return list.filter((g) => g.amenities.includes("rig"));
+  if (f === "ring") return list.filter((g) => am(g).includes("ring"));
+  if (f === "bags") return list.filter((g) => am(g).includes("bags"));
+  if (f === "platform") return list.filter((g) => am(g).includes("platforms"));
+  if (f === "24h") return list.filter((g) => /24/i.test(g.hours || ""));
+  if (f === "wod") return list.filter((g) => /WOD/i.test((g.next && g.next[sport]) || ""));
+  if (f === "rig") return list.filter((g) => am(g).includes("rig"));
   if (f === "pads") return tagHit(/pad/i);
   if (f === "fightteam") return tagHit(/fight team/i);
-  if (f === "sled") return list.filter((g) => g.amenities.includes("sled") || g.amenities.includes("stations"));
+  if (f === "sled")
+    return list.filter((g) => am(g).includes("sled") || am(g).includes("stations"));
   if (f === "indoor")
     return list.filter(
-      (g) => g.amenities.includes("indoor") || (g.tags[sport] || []).some((t) => /indoor/i.test(t))
+      (g) => am(g).includes("indoor") || tagsFor(g).some((t) => /indoor/i.test(t))
     );
   if (f === "tournament") return tagHit(/tournament|hosts events|ladder/i);
   if (f === "reformer")
     return list.filter(
-      (g) => g.amenities.includes("reformer") || (g.tags[sport] || []).some((t) => /reformer/i.test(t))
+      (g) => am(g).includes("reformer") || tagsFor(g).some((t) => /reformer/i.test(t))
     );
   return list;
 }
@@ -556,11 +884,12 @@ function socialForSport() {
 /* ---------- Cards ---------- */
 function gymCardHTML(g, sport) {
   const focus = sport || focusId();
-  const primarySport = focus && g.sports.includes(focus) ? focus : g.sports[0];
-  const tags = (g.tags[primarySport] || []).slice(0, 3);
-  const next = g.next[primarySport] || "";
-  const here = (g.here[primarySport] || []).length;
-  const sportLabels = g.sports
+  const sports = g.sports || [];
+  const primarySport = focus && sports.includes(focus) ? focus : sports[0];
+  const tags = ((g.tags && g.tags[primarySport]) || []).slice(0, 3);
+  const next = (g.next && g.next[primarySport]) || "";
+  const here = ((g.here && g.here[primarySport]) || []).length;
+  const sportLabels = sports
     .slice(0, 3)
     .map((id) => sportMeta(id)?.short || id)
     .join(" · ");
@@ -570,20 +899,29 @@ function gymCardHTML(g, sport) {
       : null;
   const ratingHtml = agg
     ? `<div class="rating-pill"><span class="stars">${ReviewSystem.starsHtml(agg.overall)}</span> ${agg.overall} · ${agg.count}</div>`
-    : "";
+    : g.googleRating
+      ? `<div class="rating-pill"><span class="stars">★</span> ${g.googleRating}${g.googleRatingCount ? ` · ${g.googleRatingCount}` : ""}</div>`
+      : "";
+  const metaBits = [];
+  if (next) metaBits.push(next);
+  else if (g.hours) metaBits.push(g.hours);
+  else if (g.address) metaBits.push(g.address);
+  if (g.phone) metaBits.push(g.phone);
   return `
-    <article class="card" data-gym="${g.id}">
+    <article class="card" data-gym="${escapeHtml(g.id)}">
       <div class="card-top">
         <div>
           <div class="card-title">${escapeHtml(g.name)}</div>
-          <div class="card-meta">${next ? escapeHtml(next) : escapeHtml(g.hours)}</div>
+          <div class="card-meta">${metaBits.length ? escapeHtml(metaBits.join(" · ")) : "Nearby"}</div>
           ${ratingHtml}
         </div>
-        <div class="dist">${g.mi} mi</div>
+        <div class="dist">${g.mi != null ? g.mi + " mi" : "—"}</div>
       </div>
       <div class="card-tags">
-        ${g.open ? '<span class="tag-pill open">Open now</span>' : '<span class="tag-pill">Closed</span>'}
-        ${!focus ? `<span class="tag-pill accent">${escapeHtml(sportLabels)}</span>` : ""}
+        ${g.open !== false ? '<span class="tag-pill open">Nearby</span>' : ""}
+        ${g.phone ? '<span class="tag-pill">Phone</span>' : ""}
+        ${g.website ? '<span class="tag-pill">Website</span>' : ""}
+        ${!focus && sportLabels ? `<span class="tag-pill accent">${escapeHtml(sportLabels)}</span>` : ""}
         ${tags.map((t) => `<span class="tag-pill accent">${escapeHtml(t)}</span>`).join("")}
         ${here ? `<span class="tag-pill live">${here} here</span>` : ""}
         ${(agg?.topTags || []).slice(0, 2).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}
@@ -689,16 +1027,16 @@ function renderHomeWelcome() {
       .map((ps) => sportMeta(ps.id)?.short || ps.id)
       .join(" · ");
     el.innerHTML = `
-      <div class="demo-banner" id="demoBanner">
-        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports profile</button>
+      <div class="mode-banner" id="demoBanner">
+        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports</button>
         <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Just exploring</button>
       </div>
       <h2>Hey ${escapeHtml(name)}</h2>
       <p>Your sports: ${escapeHtml(list)}. Focus one for today or stay open — switch anytime.</p>`;
   } else {
     el.innerHTML = `
-      <div class="demo-banner" id="demoBanner">
-        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports profile</button>
+      <div class="mode-banner" id="demoBanner">
+        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports</button>
         <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Just exploring</button>
       </div>
       <h2>Welcome</h2>
@@ -730,9 +1068,21 @@ function renderHome() {
   const homeGyms = $("#homeGyms");
   if (homeGyms) {
     const gMod = homeGyms.closest(".module");
-    if (!gyms.length) gMod?.classList.add("collapsed");
-    else {
-      gMod?.classList.remove("collapsed");
+    gMod?.classList.remove("collapsed");
+    if (state.live.loading && !gyms.length) {
+      homeGyms.innerHTML = empty("Finding places…", "Allow location when asked.");
+    } else if (!gyms.length) {
+      homeGyms.innerHTML =
+        empty(
+          "No places yet",
+          state.live.error || "Open Venues and use your location or search a city."
+        ) +
+        `<button type="button" class="btn-ghost" id="homeLoadPlaces" style="width:100%;margin-top:8px;padding:12px">Find places near me</button>`;
+      $("#homeLoadPlaces")?.addEventListener("click", () => {
+        switchTab("gyms");
+        loadLivePlaces({ force: true, regeo: true });
+      });
+    } else {
       homeGyms.innerHTML = gyms.map((g) => gymCardHTML(g, sport)).join("");
     }
   }
@@ -784,7 +1134,7 @@ function renderCheckinBar() {
   if (!bar) return;
   const s = sportMeta(focusId());
   if (state.checkedInGym) {
-    const g = GYMS.find((x) => x.id === state.checkedInGym);
+    const g = findGym(state.checkedInGym);
     bar.classList.add("live");
     bar.innerHTML = `
       <div>
@@ -822,31 +1172,99 @@ function renderCheckinBar() {
 }
 
 function renderGyms() {
+  updateLiveStatusBar();
   let list = filterGyms(gymsForSport());
   const listEl = $("#gymList");
   const mapEl = $("#gymMap");
   if (!listEl || !mapEl) return;
+
+  if (state.live.loading && !list.length) {
+    mapEl.classList.add("hidden");
+    listEl.classList.remove("hidden");
+    listEl.innerHTML = empty(
+      "Finding places near you…",
+      "Allow location when asked, or search a city above."
+    );
+    return;
+  }
+
+  if (state.live.error && !list.length) {
+    mapEl.classList.add("hidden");
+    listEl.classList.remove("hidden");
+    listEl.innerHTML =
+      empty("Couldn’t load places", state.live.error) +
+      `<button type="button" class="btn-primary" id="retryLivePlaces" style="margin-top:12px">Use my location</button>
+       <p class="muted small" style="margin-top:10px">Or type a city above and tap Search area.</p>`;
+    $("#retryLivePlaces")?.addEventListener("click", () =>
+      loadLivePlaces({ force: true, regeo: true })
+    );
+    return;
+  }
+
   if (state.gymView === "map") {
     listEl.classList.add("hidden");
     mapEl.classList.remove("hidden");
-    $("#mapPins").innerHTML = list
-      .map((g, i) => {
-        const left = 18 + ((i * 37) % 70);
-        const top = 20 + ((i * 53) % 60);
-        return `<div class="map-pin" style="left:${left}%;top:${top}%" data-gym="${g.id}" title="${escapeHtml(g.name)}"></div>`;
-      })
-      .join("");
+    if (typeof L === "undefined") {
+      mapEl.innerHTML = empty(
+        "Map is loading…",
+        "Try List view, or open Settings → Refresh app."
+      );
+      return;
+    }
+    if (!document.getElementById("liveMap")) {
+      mapEl.innerHTML = `<div id="liveMap" class="live-map" role="application" aria-label="Venue map"></div>
+        <p class="map-caption">Tap a pin for details · same places as list</p>`;
+    }
+    renderLiveMap(list);
   } else {
     mapEl.classList.add("hidden");
     listEl.classList.remove("hidden");
+    const focus = focusId();
+    const matchCount = focus
+      ? list.filter((g) => (g.sports || []).includes(focus)).length
+      : list.length;
+    const note =
+      focus && matchCount < list.length
+        ? `<p class="hint" style="margin-bottom:10px">${matchCount} closer to ${escapeHtml(
+            sportMeta(focus)?.short || focus
+          )} · ${list.length - matchCount} other places nearby</p>`
+        : "";
     listEl.innerHTML = list.length
-      ? list.map((g) => gymCardHTML(g, focusId())).join("")
-      : empty("No venues match", "Clear filters or explore all sports.");
+      ? note + list.map((g) => gymCardHTML(g, focus)).join("")
+      : empty(
+          "No places in this area",
+          "Search another city, clear filters, or move the map area with a new location."
+        );
   }
 }
 
-function mapsSearchUrl(gymName) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(gymName)}`;
+function mapsSearchUrl(gymName, address) {
+  if (typeof PlacesLive !== "undefined" && PlacesLive.mapsSearchUrl) {
+    return PlacesLive.mapsSearchUrl(gymName, address);
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    [gymName, address].filter(Boolean).join(" ")
+  )}`;
+}
+
+function contactLinksHTML(g) {
+  const links = [];
+  if (g.phone) {
+    const tel = g.phone.replace(/[^\d+]/g, "");
+    links.push(
+      `<a class="btn-ghost contact-link" href="tel:${escapeHtml(tel)}">Call ${escapeHtml(g.phone)}</a>`
+    );
+  }
+  if (g.website) {
+    links.push(
+      `<a class="btn-ghost contact-link" href="${escapeHtml(g.website)}" target="_blank" rel="noopener">Website</a>`
+    );
+  }
+  const maps = g.mapsUrl || mapsSearchUrl(g.name, g.address);
+  links.push(
+    `<a class="btn-ghost contact-link" href="${escapeHtml(maps)}" target="_blank" rel="noopener">Open in Google Maps</a>`
+  );
+  return `<div class="contact-links">${links.join("")}</div>`;
 }
 
 function renderReviewsPanel(gymId, sport) {
@@ -909,7 +1327,8 @@ function renderReviewsPanel(gymId, sport) {
     <h4 class="rep-section-title">Outside the app</h4>
     <p class="outside-note">We keep Google/Yelp noise out of the main score. Use Maps for directions &amp; public hours — use RollPhase for sport-specific athlete signal.</p>
     <div class="ext-links">
-      <a href="${mapsSearchUrl(GYMS.find((x) => x.id === gymId)?.name || "")}" target="_blank" rel="noopener">Open in Google Maps</a>
+      <a href="${escapeHtml((findGym(gymId)?.mapsUrl) || mapsSearchUrl(findGym(gymId)?.name || ""))}" target="_blank" rel="noopener">Open in Google Maps</a>
+      ${findGym(gymId)?.website ? `<a href="${escapeHtml(findGym(gymId).website)}" target="_blank" rel="noopener">Venue website</a>` : ""}
       <button type="button" class="linkish" id="copyVenueShare">Copy share link for non-app friends</button>
     </div>
   `;
@@ -995,9 +1414,9 @@ function bindRateForm(gymId, sport) {
   });
 
   $("#copyVenueShare")?.addEventListener("click", () => {
-    const g = GYMS.find((x) => x.id === gymId);
+    const g = findGym(gymId);
     const agg = RS.aggregateRating(gymId, sport);
-    const line = `${g?.name} on RollPhase${agg ? ` · ${agg.overall}★ (${agg.count} athlete reviews)` : ""} — ${location.origin}${location.pathname}#gym=${gymId}`;
+    const line = `${g?.name || "Venue"} on RollPhase${agg ? ` · ${agg.overall}★ (${agg.count} athlete reviews)` : ""}${g?.website ? ` · ${g.website}` : ""} — ${location.origin}${location.pathname}#gym=${gymId}`;
     try {
       navigator.clipboard?.writeText(line);
       alert("Copied share blurb for friends (app or not).");
@@ -1007,48 +1426,77 @@ function bindRateForm(gymId, sport) {
   });
 }
 
-function openGymDetail(id) {
-  const g = GYMS.find((x) => x.id === id);
+function openGymDetail(id, opts = {}) {
+  if (!opts.historyMode) opts.historyMode = "push";
+  const g = findGym(id);
   if (!g) return;
-  const sport = focusId() && g.sports.includes(focusId()) ? focusId() : g.sports[0];
+  const sports = g.sports || [];
+  const sport = focusId() && sports.includes(focusId()) ? focusId() : sports[0];
   const s = sportMeta(sport);
-  const tags = g.tags[sport] || [];
-  const here = g.here[sport] || [];
+  const tags = (g.tags && g.tags[sport]) || [];
+  const here = (g.here && g.here[sport]) || [];
   const promo = g.promo?.[sport];
   const social = g.social || {};
   const agg =
     typeof ReviewSystem !== "undefined" ? ReviewSystem.aggregateRating(g.id, sport) : null;
+  const hoursDisplay =
+    g.hours ||
+    (g.live ? "Hours not listed — check the website or Maps" : "—");
+  const openLabel =
+    g.open === false ? "May be closed" : g.hours ? "See hours" : "Nearby";
 
   $("#gymDetailBody").innerHTML = `
     <div class="detail-hero">
       <h2>${escapeHtml(g.name)}</h2>
-      <div class="card-meta">${g.mi} mi · ${g.open ? "Open now" : "Closed"} · ${escapeHtml(g.hours)}</div>
+      <div class="card-meta">${g.mi != null ? g.mi + " mi" : "—"} · ${escapeHtml(openLabel)}</div>
       ${
-        agg
-          ? `<div class="rating-pill" style="margin-top:6px"><span class="stars">${ReviewSystem.starsHtml(agg.overall)}</span> ${agg.overall} · ${agg.count} RollPhase reviews</div>`
+        g.address
+          ? `<div class="card-meta" style="margin-top:4px">${escapeHtml(g.address)}</div>`
           : ""
       }
+      ${
+        agg
+          ? `<div class="rating-pill" style="margin-top:6px"><span class="stars">${ReviewSystem.starsHtml(agg.overall)}</span> ${agg.overall} · ${agg.count} athlete reviews</div>`
+          : g.googleRating
+            ? `<div class="rating-pill" style="margin-top:6px">★ ${g.googleRating}${g.googleRatingCount ? ` · ${g.googleRatingCount} ratings` : ""}</div>`
+            : ""
+      }
       <div class="card-tags" style="margin-top:10px">
-        ${g.sports.map((sid) => `<span class="tag-pill accent">${escapeHtml(sportMeta(sid)?.short || sid)}</span>`).join("")}
+        ${sports.map((sid) => `<span class="tag-pill accent">${escapeHtml(sportMeta(sid)?.short || sid)}</span>`).join("")}
         ${tags.map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}
+        ${g.phone ? '<span class="tag-pill">Phone</span>' : ""}
+        ${g.website ? '<span class="tag-pill">Website</span>' : ""}
       </div>
     </div>
     <div class="detail-tabs">
       <button type="button" class="detail-tab active" data-panel="overview">Overview</button>
       <button type="button" class="detail-tab" data-panel="reviews">Reviews</button>
-      <button type="button" class="detail-tab" data-panel="schedule">Schedule</button>
+      <button type="button" class="detail-tab" data-panel="schedule">Hours</button>
       <button type="button" class="detail-tab" data-panel="here">Here now</button>
-      <button type="button" class="detail-tab" data-panel="social">Social</button>
+      <button type="button" class="detail-tab" data-panel="social">Links</button>
     </div>
     <div class="detail-panel active" data-panel="overview">
-      <div class="row-line"><span>Next</span><span>${escapeHtml(g.next[sport] || "—")}</span></div>
-      <div class="row-line"><span>Sports</span><span>${g.sports.map((x) => sportMeta(x)?.short || x).join(", ")}</span></div>
+      <div class="row-line"><span>Phone</span><span>${
+        g.phone
+          ? `<a href="tel:${escapeHtml(g.phone.replace(/[^\d+]/g, ""))}">${escapeHtml(g.phone)}</a>`
+          : "Not listed — open Maps"
+      }</span></div>
+      <div class="row-line"><span>Website</span><span>${
+        g.website
+          ? `<a href="${escapeHtml(g.website)}" target="_blank" rel="noopener">Visit site</a>`
+          : "Not listed — open Maps"
+      }</span></div>
+      <div class="row-line"><span>Hours</span><span>${escapeHtml(hoursDisplay)}</span></div>
+      <div class="row-line"><span>Sports</span><span>${
+        sports.map((x) => sportMeta(x)?.short || x).join(", ") || "—"
+      }</span></div>
       ${
         agg
           ? `<div class="row-line"><span>Athletes say</span><span>${escapeHtml((agg.topTags || []).slice(0, 2).join(" · ") || "—")}</span></div>`
           : ""
       }
-      <button type="button" class="btn-primary" id="checkInHere">Check in${s ? ` · ${escapeHtml(s.short)}` : ""}</button>
+      ${contactLinksHTML(g)}
+      <button type="button" class="btn-primary" id="checkInHere" style="margin-top:12px">Check in${s ? ` · ${escapeHtml(s.short)}` : ""}</button>
       <button type="button" class="btn-ghost" id="savePlace" style="width:100%;margin-top:8px;padding:12px">${isFavorite(g.id) ? "✓ Saved place" : "Save place · stay in the loop"}</button>
       <button type="button" class="btn-ghost" id="followGym" style="width:100%;margin-top:8px;padding:12px">Follow for updates</button>
       <button type="button" class="btn-ghost" id="jumpReviews" style="width:100%;margin-top:8px;padding:12px">See athlete reviews</button>
@@ -1062,9 +1510,10 @@ function openGymDetail(id) {
       ${renderReviewsPanel(g.id, sport)}
     </div>
     <div class="detail-panel" data-panel="schedule">
-      <div class="row-line"><span>Today</span><span>${escapeHtml(g.next[sport] || "Nothing listed")}</span></div>
-      <div class="row-line"><span>Hours</span><span>${escapeHtml(g.hours)}</span></div>
+      <div class="row-line"><span>Hours</span><span>${escapeHtml(hoursDisplay)}</span></div>
+      <p class="muted small" style="margin-top:10px">Class times come from the gym — check their site or Maps if nothing is listed.</p>
       ${promo ? `<div class="event-card" style="margin-top:12px"><div class="card-title">${escapeHtml(promo)}</div></div>` : ""}
+      ${contactLinksHTML(g)}
     </div>
     <div class="detail-panel" data-panel="here">
       ${
@@ -1078,7 +1527,7 @@ function openGymDetail(id) {
         </div>`
               )
               .join("")
-          : empty("Nobody checked in", "Be first when you arrive.")
+          : empty("Nobody checked in yet", "Be first when you arrive.")
       }
     </div>
     <div class="detail-panel" data-panel="social">
@@ -1088,15 +1537,19 @@ function openGymDetail(id) {
               .map(([k, v]) => `<div class="row-line"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`)
               .join("") +
             `<p class="muted small" style="margin-top:12px">Following brings their updates into your Feed.</p>`
-          : empty("No linked socials", "Gym can connect IG / FB later.")
+          : empty("No social links yet", "Use the website or Maps for now.")
       }
-      <div class="ext-links">
-        <a href="${mapsSearchUrl(g.name)}" target="_blank" rel="noopener">Directions · Google Maps</a>
-      </div>
+      ${contactLinksHTML(g)}
     </div>
   `;
 
   showScreen("gym-detail");
+  if (opts.historyMode === "push") {
+    pushNav({ view: "gym", gymId: id, tab: "gyms" });
+  } else if (opts.historyMode === "replace") {
+    replaceNav({ view: "gym", gymId: id, tab: "gyms" });
+  }
+
   $$(".detail-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       $$(".detail-tab").forEach((b) => b.classList.remove("active"));
@@ -1113,7 +1566,7 @@ function openGymDetail(id) {
     state.checkedInGym = g.id;
     if (sport) applySkin(sport, { flash: false });
     if (typeof ReviewSystem !== "undefined") ReviewSystem.recordVisit(g.id, sport);
-    switchTab("home");
+    switchTab("home", { historyMode: "push" });
   });
   $("#savePlace")?.addEventListener("click", (e) => {
     toggleFavorite(g);
@@ -1129,7 +1582,7 @@ function openGymDetail(id) {
   });
   $("#addSportFromGym")?.addEventListener("click", () => {
     if (sport) addSportToProfile(sport, "—");
-    switchTab("profile");
+    switchTab("profile", { historyMode: "push" });
   });
 }
 
@@ -1169,7 +1622,10 @@ function renderPartners() {
     </article>`
         )
         .join("")
-    : empty("No partners in this pool", "Expand radius or clear sport focus.");
+    : empty(
+        "No partners nearby yet",
+        "When athletes nearby open to train, they’ll show up here. Nothing invented."
+      );
 
   $$("[data-match]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1315,23 +1771,23 @@ function renderFeed() {
       ? list.join("")
       : empty(
           "Your loop is quiet",
-          "Set a first-choice sport and save a few gyms — specials and events land here."
+          "Save places you train and set a first-choice sport. Updates show up when something’s actually happening."
         );
   } else if (state.feedMode === "events") {
     const list = eventsForSport({ upcomingOnly: true });
     body.innerHTML = list.length
       ? list.map(eventCardHTML).join("")
-      : empty("No upcoming events", "Try another sport or open For you.");
+      : empty("No upcoming events", "Events from gyms and orgs will land here when connected.");
   } else if (state.feedMode === "live") {
     const list = eventsForSport({ liveOnly: true });
     body.innerHTML = list.length
       ? list.map(eventCardHTML).join("")
-      : empty("Nothing live right now", "Live sessions show up here.");
+      : empty("Nothing live right now", "Sessions appear here when athletes check in.");
   } else {
     const list = socialForSport();
     body.innerHTML = list.length
       ? list.map(socialCardHTML).join("")
-      : empty("No updates yet", "Save or follow places you train.");
+      : empty("No updates yet", "Follow places from venue detail to see their posts here.");
   }
 
   $$("[data-notify]").forEach((btn) => {
@@ -1370,7 +1826,7 @@ function renderGear() {
       </article>`
           )
           .join("")
-      : empty("No shops", "Gear stays sport-scoped.");
+      : empty("No shops nearby yet", "Gear shops for this sport will show here when available.");
   } else {
     needsEl?.classList.remove("hidden");
     shopsEl.classList.add("hidden");
@@ -1391,27 +1847,100 @@ function renderGear() {
   }
 }
 
+/** Profile main: identity only — name, crest, strip on/off. Colors → Settings. */
+function renderRepresentSummary(host) {
+  if (!host) return;
+  const rep = ensureRepresent();
+  host.innerHTML = `
+    <label class="toggle-row">
+      <span>Show “I represent” strip</span>
+      <input type="checkbox" id="repEnabledMain" ${rep.enabled ? "checked" : ""} />
+    </label>
+    <div class="social-field" style="margin-top:10px">
+      <label>Club / team name</label>
+      <input type="text" id="repLabelMain" value="${escapeHtml(rep.label || "")}" placeholder="What you represent" />
+    </div>
+    <div class="rep-logo-row" style="margin-top:12px">
+      <div class="rep-logo-preview" id="repLogoPreviewMain"></div>
+      <div class="rep-logo-actions">
+        <label class="btn-ghost rep-file-btn">
+          Upload crest
+          <input type="file" id="repLogoFileMain" accept="image/*" hidden />
+        </label>
+        <button type="button" class="btn-ghost" id="repLogoClearMain" ${rep.logoDataUrl ? "" : "disabled"}>Remove</button>
+      </div>
+    </div>
+    <div class="rep-summary-swatches" aria-hidden="true">
+      <span style="background:${escapeHtml(rep.colors?.primary || "#121212")}"></span>
+      <span style="background:${escapeHtml(rep.colors?.secondary || "#f4f4f4")}"></span>
+      <span style="background:${escapeHtml(rep.colors?.accent || "#8a8a8a")}"></span>
+    </div>
+    <button type="button" class="btn-ghost" id="repOpenSettings" style="width:100%;margin-top:12px;padding:12px">
+      Colors &amp; look · Settings
+    </button>
+  `;
+
+  // Mini logo preview on main
+  const prev = $("#repLogoPreviewMain");
+  if (prev) {
+    if (rep.logoDataUrl) {
+      const z = rep.crop?.zoom || 1;
+      const x = (rep.crop?.x ?? 0.5) * 100;
+      const y = (rep.crop?.y ?? 0.5) * 100;
+      prev.innerHTML = `<img src="${rep.logoDataUrl}" alt="" style="transform:scale(${z});object-position:${x}% ${y}%" />`;
+    } else {
+      prev.innerHTML = `<span class="muted small">No crest</span>`;
+    }
+  }
+
+  $("#repEnabledMain")?.addEventListener("change", (e) => {
+    rep.enabled = e.target.checked;
+    applyRepresentStrip();
+  });
+  $("#repLabelMain")?.addEventListener("input", (e) => {
+    rep.label = e.target.value;
+    if (rep.label.trim()) rep.enabled = true;
+    applyRepresentStrip();
+  });
+  $("#repLogoFileMain")?.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      rep.logoDataUrl = String(reader.result);
+      rep.crop = { zoom: 1, x: 0.5, y: 0.5 };
+      rep.enabled = true;
+      rep.mode = "custom";
+      renderRepresentSummary(host);
+      applyRepresentStrip();
+    };
+    reader.readAsDataURL(file);
+  });
+  $("#repLogoClearMain")?.addEventListener("click", () => {
+    rep.logoDataUrl = null;
+    renderRepresentSummary(host);
+    applyRepresentStrip();
+  });
+  $("#repOpenSettings")?.addEventListener("click", () => openProfileSettings());
+}
+
+/** Settings only: colors, pattern, crop, smart palette — not on main profile scroll. */
 function renderRepresentStudio(host) {
+  if (!host) return;
   const rep = ensureRepresent();
   const c = rep.colors;
   const templates = typeof REPRESENT_TEMPLATES !== "undefined" ? REPRESENT_TEMPLATES : [];
   host.innerHTML = `
     <p class="muted small" style="margin-bottom:10px">
-      Personalize <strong style="color:var(--text)">your</strong> strip — club name, crest, and colors.
-      Only upload marks you have rights to use. This does not rebrand every sport for everyone.
+      Fine-tune your strip look. Club name and crest upload also work from Profile.
     </p>
 
-    <label class="toggle-row">
-      <span>Show “I represent” strip</span>
-      <input type="checkbox" id="repEnabled" ${rep.enabled ? "checked" : ""} />
-    </label>
-
-    <div class="social-field" style="margin-top:10px">
-      <label>Name</label>
-      <input type="text" id="repLabelInput" value="${escapeHtml(rep.label || "")}" placeholder="What you call your team / academy" />
+    <div class="social-field">
+      <label>Name (same as profile)</label>
+      <input type="text" id="repLabelInput" value="${escapeHtml(rep.label || "")}" placeholder="Team / academy name" />
     </div>
 
-    <h4 class="rep-section-title">1 · Logo</h4>
+    <h4 class="rep-section-title">Logo crop</h4>
     <div class="rep-logo-row">
       <div class="rep-logo-preview" id="repLogoPreview"></div>
       <div class="rep-logo-actions">
@@ -1428,7 +1957,7 @@ function renderRepresentStudio(host) {
       <label class="rep-slider-label">Pan Y <input type="range" id="repPanY" min="0" max="1" step="0.01" value="${rep.crop.y ?? 0.5}" /></label>
     </div>
 
-    <h4 class="rep-section-title">2 · Colors (fully free)</h4>
+    <h4 class="rep-section-title">Colors</h4>
     <div class="rep-color-grid">
       ${["primary", "secondary", "accent"]
         .map(
@@ -1440,20 +1969,20 @@ function renderRepresentStudio(host) {
           </div>
           <input type="text" class="rep-hex" data-hex-key="${key}" value="${escapeHtml(c[key])}" maxlength="7" />
           <label class="rep-slider-label">R
-            <input type="range" data-rgb="${key}" data-ch="r" min="0" max="255" value="${parseInt((c[key] || '#000000').slice(1, 3), 16) || 0}" />
+            <input type="range" data-rgb="${key}" data-ch="r" min="0" max="255" value="${parseInt((c[key] || "#000000").slice(1, 3), 16) || 0}" />
           </label>
           <label class="rep-slider-label">G
-            <input type="range" data-rgb="${key}" data-ch="g" min="0" max="255" value="${parseInt((c[key] || '#000000').slice(3, 5), 16) || 0}" />
+            <input type="range" data-rgb="${key}" data-ch="g" min="0" max="255" value="${parseInt((c[key] || "#000000").slice(3, 5), 16) || 0}" />
           </label>
           <label class="rep-slider-label">B
-            <input type="range" data-rgb="${key}" data-ch="b" min="0" max="255" value="${parseInt((c[key] || '#000000').slice(5, 7), 16) || 0}" />
+            <input type="range" data-rgb="${key}" data-ch="b" min="0" max="255" value="${parseInt((c[key] || "#000000").slice(5, 7), 16) || 0}" />
           </label>
         </div>`
         )
         .join("")}
     </div>
 
-    <h4 class="rep-section-title">3 · Pattern</h4>
+    <h4 class="rep-section-title">Pattern</h4>
     <div class="filter-row" id="repPatternPills">
       ${["rings", "stripe", "mesh", "solid"]
         .map(
@@ -1463,16 +1992,14 @@ function renderRepresentStudio(host) {
         .join("")}
     </div>
 
-    <h4 class="rep-section-title">4 · Optional starters</h4>
-    <p class="muted small">Seeds only — every value stays editable after.</p>
+    <h4 class="rep-section-title">Starter palettes</h4>
     <div class="filter-row" id="repTemplatePills" style="flex-wrap:wrap">
       ${templates
         .map((t) => `<button type="button" class="pill" data-template="${t.id}">${escapeHtml(t.name)}</button>`)
         .join("")}
     </div>
 
-    <h4 class="rep-section-title">5 · Smart colors from logo</h4>
-    <p class="muted small">Upload a crest, then let RollPhase suggest a matching palette and pattern. Tweak anything after.</p>
+    <h4 class="rep-section-title">Smart colors from logo</h4>
     <div class="rep-nix-actions">
       <button type="button" class="btn-primary" id="nixAnalyze" ${rep.logoDataUrl ? "" : "disabled"}>
         ${rep.nix?.status === "working" ? "Working…" : "Suggest colors from logo"}
@@ -1481,20 +2008,11 @@ function renderRepresentStudio(host) {
     </div>
     <div class="webhook-box" id="nixNotes">${escapeHtml(rep.nix?.notes || "Upload a logo, then suggest colors.")}</div>
     <div class="rep-samples" id="nixSamples"></div>
-
-    <p class="muted small" style="margin-top:12px">
-      Only upload marks you may use. Your crest stays on your profile — it does not become the app’s sport theme for everyone.
-    </p>
   `;
 
-  // preview logo
   paintRepLogoPreview();
   paintNixSamples(rep.nix?.samples || []);
 
-  $("#repEnabled")?.addEventListener("change", (e) => {
-    rep.enabled = e.target.checked;
-    applyRepresentStrip();
-  });
   $("#repLabelInput")?.addEventListener("input", (e) => {
     rep.label = e.target.value;
     if (rep.label.trim()) rep.enabled = true;
@@ -1535,8 +2053,7 @@ function renderRepresentStudio(host) {
 
   host.querySelectorAll("[data-color-key]").forEach((input) => {
     input.addEventListener("input", () => {
-      const key = input.dataset.colorKey;
-      setRepColor(key, input.value, host);
+      setRepColor(input.dataset.colorKey, input.value, host);
     });
   });
   host.querySelectorAll("[data-hex-key]").forEach((input) => {
@@ -1705,8 +2222,156 @@ function paintNixSamples(samples) {
   });
 }
 
-function renderProfile() {
+function openProfileSettings(opts = {}) {
+  const historyMode = opts.historyMode || "push";
+  state.profilePanel = "settings";
+  state.tab = "profile";
+  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === "profile"));
+  showScreen("profile");
+  const main = $("#profileMain");
+  const settings = $("#profileSettings");
+  main?.classList.add("hidden");
+  settings?.classList.remove("hidden");
+  const repHost = $("#representFields");
+  if (repHost) renderRepresentStudio(repHost);
+  if (typeof UpdateCheck !== "undefined") {
+    try {
+      const card = $("#appUpdateCard");
+      if (card) card.dataset.ready = "";
+      UpdateCheck.mountProfileCard();
+      UpdateCheck.paintBuildLabel();
+    } catch {
+      /* ignore */
+    }
+  }
+  renderGear();
+  const notifyHost = $("#notifyPrefs");
+  if (notifyHost) {
+    const n = ensureNotify();
+    const ps = sportMeta(primarySportId());
+    const rows = [
+      ["primarySport", ps ? `First choice: ${ps.short}` : "First-choice sport updates", "Events and news for your main sport"],
+      ["savedGyms", "Saved places", "When a gym you saved posts or hosts something"],
+      ["specials", "Specials & open sessions", "Open mats, free weeks, one-off nights"],
+      ["tournaments", "Tournaments & races", "Registration windows and big dates"],
+      ["liveNearby", "Live nearby", "Who’s training / sessions happening now"],
+    ];
+    notifyHost.innerHTML = rows
+      .map(
+        ([key, label, sub]) => `
+      <label class="toggle-row">
+        <span><strong style="display:block;font-size:0.85rem">${escapeHtml(label)}</strong>
+        <span class="muted small">${escapeHtml(sub)}</span></span>
+        <input type="checkbox" data-notify-pref="${key}" ${n[key] ? "checked" : ""} />
+      </label>`
+      )
+      .join("");
+    notifyHost.querySelectorAll("[data-notify-pref]").forEach((input) => {
+      input.addEventListener("change", () => {
+        ensureNotify()[input.dataset.notifyPref] = input.checked;
+      });
+    });
+  }
+  if (historyMode === "push") pushNav({ view: "settings", tab: "profile" });
+  else if (historyMode === "replace") replaceNav({ view: "settings", tab: "profile" });
+  $("#profileSettings")?.scrollTo?.(0, 0);
+  const screen = $("#screen-profile");
+  if (screen) screen.scrollTop = 0;
+}
+
+function closeProfileSettings(opts = {}) {
+  const useHistory = opts.useHistory !== false;
+  if (useHistory && !state._navSilent && history.state?.view === "settings") {
+    history.back();
+    return;
+  }
+  state.profilePanel = "main";
+  $("#profileSettings")?.classList.add("hidden");
+  $("#profileMain")?.classList.remove("hidden");
+  if (!state._navSilent) replaceNav({ view: "tab", tab: "profile" });
+  renderProfile();
+  if ($("#screen-profile")) $("#screen-profile").scrollTop = 0;
+}
+
+function paintProfileHero() {
   const p = state.profile;
+  const name = p.displayName || "Athlete";
+  const area = p.area || "Near you";
+  const age = p.ageBand || "Adult";
+  if ($("#profileDisplayName")) $("#profileDisplayName").textContent = name;
+  if ($("#profileAreaLine")) $("#profileAreaLine").textContent = `${area} · ${age}`;
+  const av = $("#profileAvatar");
+  if (av) {
+    if (p.photoDataUrl) {
+      av.innerHTML = `<img src="${p.photoDataUrl}" alt="" />`;
+      av.classList.add("has-photo");
+    } else {
+      av.textContent = initials(name);
+      av.classList.remove("has-photo");
+    }
+  }
+  if ($("#profileNameInput") && document.activeElement !== $("#profileNameInput")) {
+    $("#profileNameInput").value = p.displayName || "";
+  }
+  if ($("#profileAreaInput") && document.activeElement !== $("#profileAreaInput")) {
+    $("#profileAreaInput").value = p.area || "";
+  }
+}
+
+function renderProfile() {
+  // Panel visibility
+  if (state.profilePanel === "settings") {
+    $("#profileMain")?.classList.add("hidden");
+    $("#profileSettings")?.classList.remove("hidden");
+  } else {
+    $("#profileSettings")?.classList.add("hidden");
+    $("#profileMain")?.classList.remove("hidden");
+  }
+
+  paintProfileHero();
+
+  const photoInput = $("#profilePhotoFile");
+  if (photoInput && photoInput.dataset.bound !== "1") {
+    photoInput.dataset.bound = "1";
+    photoInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        state.profile.photoDataUrl = String(reader.result);
+        paintProfileHero();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  const nameIn = $("#profileNameInput");
+  if (nameIn && nameIn.dataset.bound !== "1") {
+    nameIn.dataset.bound = "1";
+    nameIn.addEventListener("input", (e) => {
+      state.profile.displayName = e.target.value;
+      paintProfileHero();
+    });
+  }
+  const areaIn = $("#profileAreaInput");
+  if (areaIn && areaIn.dataset.bound !== "1") {
+    areaIn.dataset.bound = "1";
+    areaIn.addEventListener("input", (e) => {
+      state.profile.area = e.target.value;
+      paintProfileHero();
+    });
+  }
+
+  if ($("#btnOpenSettings") && !$("#btnOpenSettings").dataset.bound) {
+    $("#btnOpenSettings").dataset.bound = "1";
+    $("#btnOpenSettings").addEventListener("click", () => openProfileSettings());
+  }
+  if ($("#settingsBack") && !$("#settingsBack").dataset.bound) {
+    $("#settingsBack").dataset.bound = "1";
+    $("#settingsBack").addEventListener("click", () =>
+      closeProfileSettings({ useHistory: true })
+    );
+  }
+
   const sportsHost = $("#profileSports");
   if (sportsHost) {
     const list = profileSports();
@@ -1745,57 +2410,35 @@ function renderProfile() {
     $("#profileAddSport")?.addEventListener("click", () => openSportPicker({ addMode: true }));
   }
 
-  const notifyHost = $("#notifyPrefs");
-  if (notifyHost) {
-    const n = ensureNotify();
-    const ps = sportMeta(primarySportId());
-    const rows = [
-      ["primarySport", ps ? `First choice: ${ps.short}` : "First-choice sport updates", "Events and news for your main sport"],
-      ["savedGyms", "Saved places", "When a gym you saved posts or hosts something"],
-      ["specials", "Specials & open sessions", "Open mats, free weeks, one-off nights"],
-      ["tournaments", "Tournaments & races", "Registration windows and big dates"],
-      ["liveNearby", "Live nearby", "Who’s training / sessions happening now"],
-    ];
-    notifyHost.innerHTML = rows
-      .map(
-        ([key, label, sub]) => `
-      <label class="toggle-row">
-        <span><strong style="display:block;font-size:0.85rem">${escapeHtml(label)}</strong>
-        <span class="muted small">${escapeHtml(sub)}</span></span>
-        <input type="checkbox" data-notify-pref="${key}" ${n[key] ? "checked" : ""} />
-      </label>`
-      )
-      .join("");
-    notifyHost.querySelectorAll("[data-notify-pref]").forEach((input) => {
-      input.addEventListener("change", () => {
-        ensureNotify()[input.dataset.notifyPref] = input.checked;
-      });
-    });
-  }
-
   const placesHost = $("#myPlaces");
   if (placesHost) {
     const favs = ensureFavorites();
     placesHost.innerHTML = favs.length
       ? favs
           .map((f) => {
-            const g = GYMS.find((x) => x.id === f.gymId);
+            const g = findGym(f.gymId);
             const sm = sportMeta(f.sport);
             return `
           <div class="profile-sport-row">
             <div class="meta" style="margin-left:0">
               <strong>${escapeHtml(f.name)}</strong>
-              <span>${escapeHtml(sm?.short || "")} · saved${g?.open ? " · often open" : ""}</span>
+              <span>${escapeHtml(sm?.short || "")} · saved${g?.phone ? " · phone" : ""}${g?.website ? " · site" : ""}</span>
             </div>
-            <button type="button" data-open-place="${f.gymId}">Open</button>
-            <button type="button" data-unsave-place="${f.gymId}">Unsave</button>
+            <button type="button" data-open-place="${escapeHtml(f.gymId)}">Open</button>
+            <button type="button" data-unsave-place="${escapeHtml(f.gymId)}">Unsave</button>
           </div>`;
           })
           .join("") +
-        `<p class="muted small" style="margin-top:8px">Open a gym → Save place. Specials from these land in <strong>Feed → For you</strong>.</p>`
-      : `<p class="muted small">No saved places yet. When you find a gym you like, tap <strong>Save place</strong> so you never miss their specials.</p>`;
+        `<p class="muted small" style="margin-top:8px">Open a live venue → Save place. Specials land in <strong>Feed → For you</strong> once gyms connect.</p>`
+      : `<p class="muted small">No saved places yet. Load venues near you, open one you like, tap <strong>Save place</strong>.</p>`;
     placesHost.querySelectorAll("[data-open-place]").forEach((b) => {
-      b.addEventListener("click", () => openGymDetail(b.dataset.openPlace));
+      b.addEventListener("click", () => {
+        if (findGym(b.dataset.openPlace)) openGymDetail(b.dataset.openPlace);
+        else {
+          switchTab("gyms");
+          loadLivePlaces({ force: true });
+        }
+      });
     });
     placesHost.querySelectorAll("[data-unsave-place]").forEach((b) => {
       b.addEventListener("click", () => {
@@ -1805,9 +2448,14 @@ function renderProfile() {
     });
   }
 
-  const repHost = $("#representFields");
-  if (repHost) {
-    renderRepresentStudio(repHost);
+  // Main profile: summary only. Full color studio only in Settings.
+  const sumHost = $("#representSummary");
+  if (sumHost && state.profilePanel !== "settings") {
+    renderRepresentSummary(sumHost);
+  }
+  if (state.profilePanel === "settings") {
+    const repHost = $("#representFields");
+    if (repHost) renderRepresentStudio(repHost);
   }
 
   const myRev = $("#myReviews");
@@ -1821,8 +2469,8 @@ function renderProfile() {
     myRev.innerHTML = rows.length
       ? rows
           .map((r) => {
-            const g = GYMS.find((x) => x.id === r.gymId);
-            return `<div class="review-card" style="cursor:pointer" data-gym="${r.gymId}">
+            const g = findGym(r.gymId);
+            return `<div class="review-card" style="cursor:pointer" data-gym="${escapeHtml(r.gymId)}">
               <div class="who">${escapeHtml(g?.name || r.gymId)}${r.verifiedVisit ? '<span class="verified-badge">Visit verified</span>' : ""}</div>
               <div class="when">${escapeHtml(sportMeta(r.sport)?.short || "")} · ${ReviewSystem.starsHtml(r.scores?.overall)}</div>
               ${r.text ? `<div class="body">${escapeHtml(r.text)}</div>` : ""}
@@ -1882,22 +2530,9 @@ function renderProfile() {
     });
   }
 
-  const wh = $("#webhookList");
-  if (wh) {
-    wh.innerHTML = p.webhooks?.length
-      ? p.webhooks
-          .map(
-            (w) => `
-      <div class="webhook-box">
-        <strong style="color:var(--text)">${escapeHtml(w.source)}</strong> · ${escapeHtml(w.sport)} · ${escapeHtml(w.status)}
-      </div>`
-          )
-          .join("")
-      : `<p class="muted small">Nothing connected yet. Follow gyms and events as you explore.</p>`;
-  }
 }
 
-function openSportPicker({ addMode = false } = {}) {
+function openSportPicker({ addMode = false, historyMode = "push" } = {}) {
   state._pickerAddMode = addMode;
   state.sportQuery = "";
   const search = $("#sportSearch");
@@ -1910,6 +2545,22 @@ function openSportPicker({ addMode = false } = {}) {
       ? "Add sports you train — as many as you want"
       : "Focus for today is optional · explore all anytime";
   }
+  if (historyMode === "push") {
+    pushNav({ view: "picker", tab: state.tab || "home", addMode: !!addMode });
+  } else if (historyMode === "replace") {
+    replaceNav({ view: "picker", tab: state.tab || "home", addMode: !!addMode });
+  }
+}
+
+function closeSportPicker({ useHistory = true } = {}) {
+  const picker = $("#sportPicker");
+  if (!picker || picker.classList.contains("hidden")) return;
+  if (useHistory && !state._navSilent && history.state?.view === "picker") {
+    history.back();
+    return;
+  }
+  picker.classList.add("hidden");
+  state._pickerAddMode = false;
 }
 
 function renderSportGrid() {
@@ -1946,24 +2597,242 @@ function renderSportGrid() {
       .join("");
 }
 
-/* ---------- Nav ---------- */
+/* ---------- Nav + phone system back (History API) ---------- */
+const MAIN_TABS = new Set(["home", "gyms", "partners", "feed", "profile"]);
+
+function navUrl(entry) {
+  if (!entry) return "#/home";
+  if (entry.view === "gym" && entry.gymId) {
+    return `#/gym/${encodeURIComponent(entry.gymId)}`;
+  }
+  if (entry.view === "settings") return "#/profile/settings";
+  if (entry.view === "picker") return `#/${entry.tab || state.tab || "home"}/sports`;
+  if (entry.view === "overlay" && entry.name) {
+    return `#/${entry.tab || state.tab || "home"}/${entry.name}`;
+  }
+  const tab = entry.tab && MAIN_TABS.has(entry.tab) ? entry.tab : "home";
+  return `#/${tab}`;
+}
+
+function parseLocationToEntry() {
+  const raw = (location.hash || "").replace(/^#/, "");
+  if (!raw || raw === "/" || raw === "") return { view: "tab", tab: "home" };
+  const path = raw.startsWith("/") ? raw.slice(1) : raw;
+  if (path.startsWith("gym/")) {
+    return { view: "gym", gymId: decodeURIComponent(path.slice(4)), tab: "gyms" };
+  }
+  const parts = path.split("/").filter(Boolean);
+  const tab = MAIN_TABS.has(parts[0]) ? parts[0] : "home";
+  if (parts[0] === "profile" && parts[1] === "settings") {
+    return { view: "settings", tab: "profile" };
+  }
+  if (parts[1] === "sports") return { view: "picker", tab };
+  if (parts[1] === "feedback" || parts[1] === "about") {
+    return { view: "overlay", name: parts[1], tab };
+  }
+  return { view: "tab", tab };
+}
+
+function pushNav(entry) {
+  if (state._navSilent) return;
+  const url = navUrl(entry);
+  try {
+    history.pushState({ ...entry, rp: 1 }, "", url);
+  } catch {
+    /* ignore */
+  }
+}
+
+function replaceNav(entry) {
+  if (state._navSilent) return;
+  const url = navUrl(entry);
+  try {
+    history.replaceState({ ...entry, rp: 1 }, "", url);
+  } catch {
+    /* ignore */
+  }
+}
+
+function closeOverlays({ fromHistory = false } = {}) {
+  const picker = $("#sportPicker");
+  if (picker && !picker.classList.contains("hidden")) {
+    picker.classList.add("hidden");
+    state._pickerAddMode = false;
+  }
+  // Beta sheets
+  document.getElementById("feedbackSheet")?.remove();
+  document.getElementById("aboutSheet")?.remove();
+  if (!fromHistory && history.state?.view === "picker") {
+    // opened via push — back is preferred; no-op if already popping
+  }
+}
+
 function showScreen(name) {
   $$(".screen").forEach((s) => s.classList.remove("active"));
   $(`#screen-${name}`)?.classList.add("active");
+  // Scroll active screen to top on enter (native-app feel)
+  const el = $(`#screen-${name}`);
+  if (el) el.scrollTop = 0;
+  // Detail screens: keep tab highlight on parent tab
+  if (name === "gym-detail") {
+    $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === "gyms"));
+  }
 }
 
-function switchTab(tab) {
+/**
+ * @param {string} tab
+ * @param {{ historyMode?: 'push'|'replace'|'none' }} [opts]
+ */
+function switchTab(tab, opts = {}) {
+  const historyMode = opts.historyMode || "replace";
+  if (!MAIN_TABS.has(tab)) tab = "home";
+
+  closeOverlays({ fromHistory: state._navSilent });
+
+  // Leaving profile resets to main (not buried in Settings)
+  if (tab !== "profile") state.profilePanel = "main";
+
   state.tab = tab;
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
   showScreen(tab);
-  if (tab === "home") renderHome();
-  if (tab === "gyms") renderGyms();
+
+  if (historyMode === "push") pushNav({ view: "tab", tab });
+  else if (historyMode === "replace") replaceNav({ view: "tab", tab });
+
+  if (tab === "home") {
+    renderHome();
+    if (!state.live.places.length && !state.live.loading) loadLivePlaces();
+  }
+  if (tab === "gyms") {
+    renderGyms();
+    if (!state.live.places.length && !state.live.loading) loadLivePlaces({ force: true });
+  }
   if (tab === "partners") renderPartners();
   if (tab === "feed") renderFeed();
   if (tab === "profile") {
-    renderProfile();
-    renderGear();
+    if (opts.settings) {
+      openProfileSettings();
+    } else {
+      state.profilePanel = "main";
+      $("#profileSettings")?.classList.add("hidden");
+      $("#profileMain")?.classList.remove("hidden");
+      renderProfile();
+    }
   }
+
+  if (typeof RollPhaseShell !== "undefined") {
+    try {
+      RollPhaseShell.setAppHeight();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Apply history / hash entry (back button, deep link).
+ */
+function applyNavEntry(entry, { isPop = false } = {}) {
+  if (!entry) entry = { view: "tab", tab: "home" };
+  state._navSilent = true;
+  try {
+    if (entry.view === "gym" && entry.gymId) {
+      state.tab = "gyms";
+      $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === "gyms"));
+      if (!findGym(entry.gymId) && state.live.places.length === 0) {
+        loadLivePlaces({ force: true }).then(() => {
+          state._navSilent = true;
+          try {
+            openGymDetail(entry.gymId, { historyMode: "none" });
+          } finally {
+            state._navSilent = false;
+          }
+        });
+      } else {
+        openGymDetail(entry.gymId, { historyMode: "none" });
+      }
+      return;
+    }
+
+    if (entry.view === "settings") {
+      openProfileSettings({ historyMode: "none" });
+      return;
+    }
+
+    if (entry.view === "picker") {
+      switchTab(entry.tab || "home", { historyMode: "none" });
+      openSportPicker({ addMode: !!entry.addMode, historyMode: "none" });
+      return;
+    }
+
+    if (entry.view === "overlay") {
+      switchTab(entry.tab || state.tab || "home", { historyMode: "none" });
+      if (entry.name === "feedback" && typeof openFeedbackSheet === "function") {
+        openFeedbackSheet({ historyMode: "none" });
+      } else if (entry.name === "about" && typeof openAboutSheet === "function") {
+        openAboutSheet({ historyMode: "none" });
+      }
+      return;
+    }
+
+    // Main tab — close nested UI first
+    closeOverlays({ fromHistory: true });
+    state.profilePanel = "main";
+    $("#profileSettings")?.classList.add("hidden");
+    $("#profileMain")?.classList.remove("hidden");
+    switchTab(entry.tab || "home", { historyMode: "none" });
+  } finally {
+    state._navSilent = false;
+  }
+}
+
+function goBackInApp() {
+  // Nested layers first (native stack feel)
+  if (state.profilePanel === "settings") {
+    closeProfileSettings({ useHistory: true });
+    return;
+  }
+  const picker = $("#sportPicker");
+  if (picker && !picker.classList.contains("hidden")) {
+    closeSportPicker({ useHistory: true });
+    return;
+  }
+  if ($("#screen-gym-detail")?.classList.contains("active")) {
+    if (history.state?.view === "gym" || (location.hash || "").includes("/gym/")) {
+      history.back();
+    } else {
+      switchTab("gyms", { historyMode: "replace" });
+    }
+    return;
+  }
+  if (document.getElementById("feedbackSheet") || document.getElementById("aboutSheet")) {
+    if (history.state?.view === "overlay") history.back();
+    else {
+      document.getElementById("feedbackSheet")?.remove();
+      document.getElementById("aboutSheet")?.remove();
+    }
+    return;
+  }
+  if (window.history.length > 1) {
+    history.back();
+    return;
+  }
+  switchTab("home", { historyMode: "replace" });
+}
+
+function bindSystemBack() {
+  window.addEventListener("popstate", (e) => {
+    const entry = e.state?.rp ? e.state : parseLocationToEntry();
+    applyNavEntry(entry, { isPop: true });
+  });
+
+  // Escape = in-app back (desktop + some devices)
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      goBackInApp();
+    }
+  });
 }
 
 function renderAll() {
@@ -1990,7 +2859,7 @@ function bind() {
   $("#sportChip")?.addEventListener("click", () => openSportPicker({ addMode: false }));
 
   $("#sportPicker")?.addEventListener("click", (e) => {
-    if (e.target.id === "sportPicker") $("#sportPicker").classList.add("hidden");
+    if (e.target.id === "sportPicker") closeSportPicker({ useHistory: true });
   });
 
   $("#sportSearch")?.addEventListener("input", (e) => {
@@ -2003,20 +2872,40 @@ function bind() {
     if (!btn) return;
     const id = btn.dataset.sport || null;
     const addMode = btn.dataset.add === "1" || state._pickerAddMode;
-    $("#sportPicker")?.classList.add("hidden");
+    // Close picker: if we pushed picker state, pop so back stack stays clean
+    if (history.state?.view === "picker") {
+      state._navSilent = true;
+      $("#sportPicker")?.classList.add("hidden");
+      state._pickerAddMode = false;
+      // Replace picker history entry with current tab so stack is clean after selection
+      replaceNav({ view: "tab", tab: state.tab || "home" });
+      state._navSilent = false;
+    } else {
+      $("#sportPicker")?.classList.add("hidden");
+      state._pickerAddMode = false;
+    }
     if (addMode && id) {
       addSportToProfile(id, "—");
-      state._pickerAddMode = false;
       return;
     }
     setSport(id); // empty string → explore
   });
 
   $$(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+    tab.addEventListener("click", () => {
+      // Main tabs replace (no endless back stack); detail/overlays use push
+      switchTab(tab.dataset.tab, { historyMode: "replace" });
+    });
   });
 
+  bindSystemBack();
+
   document.body.addEventListener("click", (e) => {
+    if (e.target.closest("#repEditStrip")) {
+      switchTab("profile", { historyMode: "replace", settings: true });
+      return;
+    }
+
     const demo = e.target.closest("[data-demo]");
     if (demo) {
       setDemoMode(demo.dataset.demo);
@@ -2032,26 +2921,26 @@ function bind() {
     }
 
     if (e.target.closest("#browseAllSports")) {
-      openSportPicker({ addMode: false });
+      openSportPicker({ addMode: false, historyMode: "push" });
       return;
     }
     if (e.target.closest("#addSportCard")) {
-      openSportPicker({ addMode: hasProfileSports() });
+      openSportPicker({ addMode: hasProfileSports(), historyMode: "push" });
       return;
     }
 
     const jump = e.target.closest(".tab-jump");
     if (jump) {
-      switchTab(jump.dataset.tab);
+      switchTab(jump.dataset.tab, { historyMode: "replace" });
       return;
     }
     const pin = e.target.closest(".map-pin");
     if (pin?.dataset.gym) {
-      openGymDetail(pin.dataset.gym);
+      openGymDetail(pin.dataset.gym, { historyMode: "push" });
       return;
     }
     const card = e.target.closest(".card[data-gym]");
-    if (card?.dataset.gym) openGymDetail(card.dataset.gym);
+    if (card?.dataset.gym) openGymDetail(card.dataset.gym, { historyMode: "push" });
 
     const nbtn = e.target.closest("[data-notify]");
     if (nbtn && (state.tab === "home" || state.tab === "feed")) {
@@ -2063,7 +2952,29 @@ function bind() {
     }
   });
 
-  $("#gymBack")?.addEventListener("click", () => switchTab("gyms"));
+  $("#gymBack")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    // System-like back: pop history when we pushed gym detail
+    if (history.state?.view === "gym" || (location.hash || "").includes("/gym/")) {
+      history.back();
+    } else {
+      switchTab("gyms", { historyMode: "replace" });
+    }
+  });
+
+  $("#refreshLivePlaces")?.addEventListener("click", () => {
+    loadLivePlaces({ force: true, regeo: true });
+  });
+  $("#btnUseMyLocation")?.addEventListener("click", () => {
+    loadLivePlaces({ force: true, regeo: true });
+  });
+  $("#btnCitySearch")?.addEventListener("click", () => searchCityAndLoad());
+  $("#citySearchInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      searchCityAndLoad();
+    }
+  });
 
   $("#gymViewSeg")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-view]");
@@ -2140,10 +3051,43 @@ function bind() {
     } else {
       state.sport = null;
     }
+
+    // Restore last phone location so gyms can load before GPS returns
+    if (typeof PlacesLive !== "undefined" && PlacesLive.loadLastLocation) {
+      const cached = PlacesLive.loadLastLocation();
+      if (cached) {
+        state.live.lat = cached.lat;
+        state.live.lng = cached.lng;
+        state.live.label = cached.label || null;
+        state.live.fromCache = true;
+      }
+    }
+
     renderStageSwatches();
     applySkin(state.sport, { flash: false });
     bind();
+
+    // Deep link / restore hash, then seed history for system back button
+    const entry = parseLocationToEntry();
+    if (
+      entry.view === "gym" ||
+      entry.view === "picker" ||
+      entry.view === "overlay" ||
+      entry.view === "settings"
+    ) {
+      applyNavEntry(entry);
+    } else {
+      const tab = entry.tab && MAIN_TABS.has(entry.tab) ? entry.tab : state.tab || "home";
+      switchTab(tab, { historyMode: "replace" });
+    }
+
     safeRenderAll();
+    // Live places — GPS + last known + city fallback messaging
+    loadLivePlaces({ force: true, regeo: true });
+
+    if (typeof RollPhaseShell !== "undefined") {
+      RollPhaseShell.applyMode();
+    }
   } catch (e) {
     console.error("boot failed", e);
     document.body.insertAdjacentHTML(
@@ -2151,7 +3095,7 @@ function bind() {
       `<div style="position:fixed;inset:0;z-index:9999;background:#111;color:#fff;padding:24px;font-family:system-ui">
         <h2>RollPhase failed to start</h2>
         <pre style="white-space:pre-wrap;color:#f88">${String(e && e.message ? e.message : e)}</pre>
-        <p>Hard refresh (Ctrl+Shift+R). If it persists, check the console.</p>
+        <p>Close the app fully and reopen. If it keeps failing, use Refresh app in Settings.</p>
       </div>`
     );
   }
