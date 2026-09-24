@@ -1,10 +1,10 @@
 /**
  * RollPhase service worker — network-first so deploys reach phones.
  * buildId is rewritten by scripts/bump-version.js on every ship.
- * BUILD_ID: 20260924-1216-206dea6
+ * BUILD_ID: 20260924-1236-1f0507f
  */
 /* eslint-disable no-restricted-globals */
-const BUILD_ID = "20260924-1216-206dea6";
+const BUILD_ID = "20260924-1236-1f0507f";
 
 self.addEventListener("install", (event) => {
   // Activate immediately so the next navigation can use this worker
