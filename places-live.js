@@ -634,7 +634,8 @@ out center tags 40;`;
   async function fetchGoogleText({ lat, lng, radiusM = 10000, sportId = null }) {
     const key = config().googlePlacesApiKey;
     if (!key) throw new Error("No Google Places API key");
-    const textQuery = SPORT_TEXT[sportId] || "gym fitness";
+    const city = String(opts.label || "").split(",")[0].trim();
+    const textQuery = [SPORT_TEXT[sportId] || "gym fitness", city].filter(Boolean).join(" ");
     const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
       method: "POST",
       headers: {

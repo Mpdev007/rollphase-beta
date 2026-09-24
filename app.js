@@ -255,10 +255,43 @@ function empty(title, sub) {
   return `<div class="empty-state"><strong>${escapeHtml(title)}</strong>${escapeHtml(sub)}</div>`;
 }
 
+function currentCity() {
+  const typed = ($("#citySearchInput")?.value || "").trim();
+  const label = state.live?.label || typed;
+  return String(label || "").split(",")[0].trim();
+}
+
+function eventSearchLink(sport) {
+  const city = currentCity();
+  if (!sport || !city) return null;
+  const terms = {
+    bjj: "bjj",
+    judo: "judo",
+    wrestling: "wrestling",
+    mma: "mma",
+    kickboxing: "kickboxing",
+    muaythai: "muay thai",
+  };
+  const term = terms[sport.id];
+  if (!term) return null;
+  return {
+    label: `${sport.short} events in ${city}`,
+    href: `https://smoothcomp.com/en/events/upcoming?location=${encodeURIComponent(city)}&search=${encodeURIComponent(term)}`,
+  };
+}
+
 function calendarHTML(sport) {
   const s = sport || sportMeta(focusId());
-  if (!s?.calendar?.href) return "";
-  return `<a class="calendar-out" href="${escapeHtml(s.calendar.href)}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(s.calendar.label)}</span><span aria-hidden="true">↗</span></a>`;
+  const links = [];
+  const local = eventSearchLink(s);
+  if (local) links.push(local);
+  if (s?.calendar?.href && s.calendar.href !== local?.href) links.push(s.calendar);
+  return links
+    .map(
+      (link) =>
+        `<a class="calendar-out" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(link.label)}</span><span aria-hidden="true">↗</span></a>`
+    )
+    .join("");
 }
 
 function kindLabel(kind) {
@@ -874,6 +907,7 @@ async function loadLivePlaces(opts = {}) {
       lng: state.live.lng,
       radiusM,
       sportId: sport || null,
+      label: state.live.label || ($("#citySearchInput")?.value || "").trim(),
     });
     state.live.places = places;
     state.live.provider = provider;
