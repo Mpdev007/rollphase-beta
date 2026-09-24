@@ -9,7 +9,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="#0c0c0e" />
+  <meta name="theme-color" content="#07090d" />
+  <meta name="apple-mobile-web-app-title" content="RollPhase" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/logo.jpg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -139,12 +142,12 @@
             </section>
 
             <!-- GYMS — live map data only -->
-            <section class="screen" data-screen="gyms" id="screen-gyms">
+            <section class="screen is-map" data-screen="gyms" id="screen-gyms">
               <div class="section-head">
                 <h2 id="gymsTitle">Gyms</h2>
                 <div class="seg" id="gymViewSeg">
-                  <button type="button" class="seg-btn active" data-view="list">List</button>
-                  <button type="button" class="seg-btn" data-view="map">Map</button>
+                  <button type="button" class="seg-btn" data-view="list">List</button>
+                  <button type="button" class="seg-btn active" data-view="map">Map</button>
                 </div>
               </div>
               <div class="live-status-row">
@@ -154,15 +157,17 @@
               <div class="location-bar">
                 <button type="button" class="btn-ghost loc-btn" id="btnUseMyLocation">Use my location</button>
                 <div class="city-search-row">
-                  <input type="search" id="citySearchInput" placeholder="City or area (e.g. Austin TX)" enterkeyhint="search" autocomplete="address-level2" />
+                  <input type="search" id="citySearchInput" placeholder="City or area" enterkeyhint="search" autocomplete="address-level2" />
+                  <button type="button" class="mic-btn" id="btnSpeakCity" hidden aria-label="Speak a city">Mic</button>
                   <button type="button" class="btn-primary loc-search" id="btnCitySearch">Search</button>
                 </div>
               </div>
               <div class="filter-row" id="gymFilters"></div>
-              <div id="gymList" class="list"></div>
-              <div id="gymMap" class="map-panel hidden">
-                <div id="liveMap" class="live-map" role="application" aria-label="Live venue map"></div>
-                <p class="map-caption">Tap a pin for details · same places as list</p>
+              <div class="gym-stage">
+                <div id="gymMap" class="map-panel">
+                  <div id="liveMap" class="live-map" role="application" aria-label="Live venue map"></div>
+                </div>
+                <div id="gymList" class="list gym-sheet"></div>
               </div>
             </section>
 

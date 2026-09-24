@@ -3,3 +3,8 @@ config.js
 .env
 .env.*
 !.env.example
+config.js
+.env
+.env.*
+__pycache__/
+.enrich-cache.json

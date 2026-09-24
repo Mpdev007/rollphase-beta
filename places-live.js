@@ -194,8 +194,80 @@ const PlacesLive = (() => {
     return out;
   }
 
+  const DAY = { mo: "Mo", tu: "Tu", we: "We", th: "Th", fr: "Fr", sa: "Sa", su: "Su" };
+
+  function expandDayToken(token) {
+    const parts = token.split("-").map((p) => p.trim().toLowerCase().slice(0, 2));
+    const order = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    const a = DAY[parts[0]];
+    if (!a) return [];
+    if (!parts[1]) return [a];
+    const b = DAY[parts[1]];
+    if (!b) return [a];
+    const i = order.indexOf(a);
+    const j = order.indexOf(b);
+    if (i < 0 || j < 0) return [a];
+    const out = [];
+    for (let k = i; ; k = (k + 1) % 7) {
+      out.push(order[k]);
+      if (order[k] === b || out.length > 7) break;
+    }
+    return out;
+  }
+
+  /** true / false when the hours string is readable, otherwise null. */
+  function openFromHours(hours, now = new Date()) {
+    if (!hours || typeof hours !== "string") return null;
+    const raw = hours.trim();
+    if (/24\s*\/\s*7|open\s+24/i.test(raw)) return true;
+    const keys = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+    const today = keys[now.getDay()];
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    const rules = raw.split(";").map((s) => s.trim()).filter(Boolean);
+    let parsed = false;
+    let sawToday = false;
+    let open = false;
+    for (const rule of rules) {
+      const m = rule.match(/^([A-Za-z]{2,9}(?:\s*-\s*[A-Za-z]{2,9})?(?:\s*,\s*[A-Za-z]{2,9}(?:\s*-\s*[A-Za-z]{2,9})?)*)\s+(.+)$/);
+      if (!m) continue;
+      const days = m[1].split(",").flatMap((tok) => expandDayToken(tok));
+      if (!days.length) continue;
+      parsed = true;
+      if (!days.includes(today)) continue;
+      sawToday = true;
+      if (/\boff\b|\bclosed\b/i.test(m[2])) continue;
+      for (const span of m[2].split(",")) {
+        const tm = span.trim().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-–]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (!tm) continue;
+        let sh = +tm[1];
+        let sm = +(tm[2] || 0);
+        let eh = +tm[4];
+        let em = +(tm[5] || 0);
+        const sap = (tm[3] || "").toLowerCase();
+        const eap = (tm[6] || sap).toLowerCase();
+        if (sap === "pm" && sh < 12) sh += 12;
+        if (sap === "am" && sh === 12) sh = 0;
+        if (eap === "pm" && eh < 12) eh += 12;
+        if (eap === "am" && eh === 12) eh = 0;
+        if (sh > 23 || eh > 24) continue;
+        const start = sh * 60 + sm;
+        let end = eh * 60 + em;
+        let nowM = minutes;
+        if (end <= start) {
+          end += 1440;
+          if (nowM < start) nowM += 1440;
+        }
+        if (nowM >= start && nowM <= end) open = true;
+      }
+    }
+    if (!parsed) return null;
+    if (!sawToday) return false;
+    return open;
+  }
+
   function venueShell(partial) {
     const sports = partial.sports?.length ? partial.sports : ["weightlifting"];
+    const open = partial.open === true ? true : partial.open === false ? false : null;
     return {
       next: {},
       here: {},
@@ -203,8 +275,8 @@ const PlacesLive = (() => {
       social: {},
       amenities: partial.amenities || [],
       live: true,
-      open: partial.open !== false,
       ...partial,
+      open,
       sports,
       tags: partial.tags || buildTagsFromBits(partial.tagBits, sports),
     };
@@ -276,6 +348,7 @@ const PlacesLive = (() => {
     const phone = et.phone || et["contact:phone"] || "";
     const website = et.website || et["contact:website"] || et.url || "";
     const hours = et.opening_hours || "";
+    const knownOpen = openFromHours(hours);
     const address = item.display_name || "";
     const mi = Math.round(haversineMi(userLat, userLng, lat, lng) * 10) / 10;
     const sports = inferSports(
@@ -293,6 +366,7 @@ const PlacesLive = (() => {
       name,
       mi,
       hours,
+      open: knownOpen,
       phone: normalizePhone(phone),
       website: normalizeUrl(website),
       address,
@@ -462,6 +536,7 @@ out center tags 40;`;
             name: tags.name,
             mi,
             hours,
+            open: openFromHours(hours),
             phone: normalizePhone(phone),
             website: normalizeUrl(website),
             address,
@@ -502,7 +577,7 @@ out center tags 40;`;
       placeId: p.id,
       name,
       mi,
-      open: openNow !== false,
+      open: typeof openNow === "boolean" ? openNow : null,
       hours: hoursText || "",
       phone: p.nationalPhoneNumber || p.internationalPhoneNumber || "",
       website: normalizeUrl(p.websiteUri || ""),
@@ -840,5 +915,6 @@ out center tags 40;`;
     mapsSearchUrl,
     config,
     viewbox,
+    openFromHours,
   };
 })();

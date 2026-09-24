@@ -48,13 +48,9 @@ const UpdateCheck = (() => {
     const v = window.ROLLPHASE_BUILD || boot;
     const label = document.getElementById("appBuildLabel");
     // Product-facing only — never show raw build hashes / deploy IDs
-    if (label && v) {
-      label.textContent = v.version ? `Version ${v.version}` : "You’re up to date";
-    }
+    if (label) label.textContent = "You’re up to date";
     const about = document.getElementById("appBuildLabelAbout");
-    if (about && v) {
-      about.textContent = v.version ? `Version ${v.version}` : "";
-    }
+    if (about) about.textContent = "";
   }
 
   /** Nuclear clear — caches + service workers — then hard navigate */
@@ -183,7 +179,7 @@ const UpdateCheck = (() => {
     if (typeof BETA !== "undefined" && remote.version) {
       BETA.version = remote.version;
       BETA.buildId = remote.buildId;
-      BETA.buildLabel = `Closed beta · ${remote.version}`;
+      BETA.buildLabel = "Closed beta · early access";
     }
     paintBuildLabel();
     try {

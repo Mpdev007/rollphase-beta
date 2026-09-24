@@ -5,7 +5,7 @@ const state = {
   sport: null,
   tab: "home",
   gymFilter: "all",
-  gymView: "list",
+  gymView: "map",
   rankFilter: "all",
   gearMode: "shops",
   feedMode: "foryou",
@@ -166,6 +166,12 @@ function escapeHtml(str) {
 
 function empty(title, sub) {
   return `<div class="empty-state"><strong>${escapeHtml(title)}</strong>${escapeHtml(sub)}</div>`;
+}
+
+function calendarHTML(sport) {
+  const s = sport || sportMeta(focusId());
+  if (!s?.calendar?.href) return "";
+  return `<a class="calendar-out" href="${escapeHtml(s.calendar.href)}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(s.calendar.label)}</span><span aria-hidden="true">↗</span></a>`;
 }
 
 function kindLabel(kind) {
@@ -617,6 +623,68 @@ function renderLiveMap(list) {
 }
 
 /**
+ * Read a place's own website for a labeled phone and posted hours.
+ * Silent if the local reader is not running. Never invents a number.
+ */
+async function enrichLivePlaces() {
+  const focus = focusId();
+  const places = [...(state.live.places || [])].sort((a, b) => {
+    const as = focus && (a.sports || []).includes(focus) ? 0 : 1;
+    const bs = focus && (b.sports || []).includes(focus) ? 0 : 1;
+    if (as !== bs) return as - bs;
+    return (a.mi || 99) - (b.mi || 99);
+  });
+  const urls = [];
+  for (const p of places) {
+    if (!p.website || !/^https?:\/\//i.test(p.website)) continue;
+    if (p.phone && p.hours) continue;
+    urls.push(p.website);
+    if (urls.length >= 4) break;
+  }
+  if (!urls.length) return;
+  let data;
+  try {
+    const res = await fetch("http://127.0.0.1:8877/enrich", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls }),
+    });
+    if (!res.ok) return;
+    data = await res.json();
+  } catch {
+    return;
+  }
+  const by = new Map();
+  for (const row of data.results || []) {
+    if (row?.url) by.set(row.url, row);
+  }
+  let changed = false;
+  for (const p of places) {
+    const hit = by.get(p.website);
+    if (!hit) continue;
+    if (hit.phone && !p.phone) {
+      p.phone = hit.phone;
+      changed = true;
+    }
+    if (hit.hours && !p.hours) {
+      p.hours = hit.hours;
+      changed = true;
+    }
+    const known =
+      hit.open === true || hit.open === false
+        ? hit.open
+        : typeof PlacesLive !== "undefined" && p.hours
+          ? PlacesLive.openFromHours(p.hours)
+          : null;
+    if (known === true || known === false) {
+      p.open = known;
+      changed = true;
+    }
+  }
+  if (changed) safeRenderAll();
+}
+
+/**
  * Load real venues near the user. Fake GYMS are never used.
  */
 async function loadLivePlaces(opts = {}) {
@@ -723,6 +791,7 @@ async function loadLivePlaces(opts = {}) {
     state.live.sources = sources || [provider];
     state.live.lastSport = sport;
     state.live.lastFetchedAt = Date.now();
+    enrichLivePlaces();
     if (!places.length) {
       state.live.error =
         "No venues found in this radius — try a wider city search.";
@@ -753,6 +822,34 @@ async function loadLivePlaces(opts = {}) {
     updateLiveStatusBar();
     safeRenderAll();
   }
+}
+
+function bindSpeechSearch() {
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $("#btnSpeakCity");
+  const input = $("#citySearchInput");
+  if (!btn || !input || !Rec) return;
+  btn.hidden = false;
+  const rec = new Rec();
+  rec.lang = navigator.language || "en-US";
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  rec.onresult = (ev) => {
+    const said = ev.results?.[0]?.[0]?.transcript || "";
+    if (!said.trim()) return;
+    input.value = said.trim();
+    searchCityAndLoad();
+  };
+  rec.onend = () => btn.classList.remove("listening");
+  rec.onerror = () => btn.classList.remove("listening");
+  btn.addEventListener("click", () => {
+    try {
+      btn.classList.add("listening");
+      rec.start();
+    } catch {
+      btn.classList.remove("listening");
+    }
+  });
 }
 
 async function searchCityAndLoad() {
@@ -818,7 +915,7 @@ function filterGyms(list) {
   if (f === "all" || f === "near") {
     return f === "near" ? list.filter((g) => g.mi <= 5) : list;
   }
-  if (f === "open") return list.filter((g) => g.open !== false);
+  if (f === "open") return list.filter((g) => g.open === true);
   if (f === "classes") {
     // Live data rarely has class schedules — keep filter soft (phone/website presence)
     return list.filter((g) => g.website || g.phone || Object.values(g.next || {}).some(Boolean));
@@ -882,6 +979,20 @@ function socialForSport() {
 }
 
 /* ---------- Cards ---------- */
+function placeToolsHTML(g) {
+  const bits = [];
+  if (g.phone) {
+    const tel = String(g.phone).replace(/[^\d+]/g, "");
+    if (tel) bits.push(`<a class="place-tool" href="tel:${escapeHtml(tel)}">Call</a>`);
+  }
+  if (g.website) {
+    bits.push(`<a class="place-tool" href="${escapeHtml(g.website)}" target="_blank" rel="noopener">Site</a>`);
+  }
+  const maps = g.mapsUrl || mapsSearchUrl(g.name, g.address);
+  if (maps) bits.push(`<a class="place-tool" href="${escapeHtml(maps)}" target="_blank" rel="noopener">Map</a>`);
+  return bits.length ? `<div class="place-tools">${bits.join("")}</div>` : "";
+}
+
 function gymCardHTML(g, sport) {
   const focus = sport || focusId();
   const sports = g.sports || [];
@@ -918,7 +1029,7 @@ function gymCardHTML(g, sport) {
         <div class="dist">${g.mi != null ? g.mi + " mi" : "—"}</div>
       </div>
       <div class="card-tags">
-        ${g.open !== false ? '<span class="tag-pill open">Nearby</span>' : ""}
+        ${g.open === true ? '<span class="tag-pill open">Open</span>' : ""}
         ${g.phone ? '<span class="tag-pill">Phone</span>' : ""}
         ${g.website ? '<span class="tag-pill">Website</span>' : ""}
         ${!focus && sportLabels ? `<span class="tag-pill accent">${escapeHtml(sportLabels)}</span>` : ""}
@@ -926,6 +1037,7 @@ function gymCardHTML(g, sport) {
         ${here ? `<span class="tag-pill live">${here} here</span>` : ""}
         ${(agg?.topTags || []).slice(0, 2).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}
       </div>
+      ${placeToolsHTML(g)}
     </article>`;
 }
 
@@ -1111,18 +1223,17 @@ function renderHome() {
   const homeEvents = $("#homeEvents");
   if (homeEvents) {
     const eMod = homeEvents.closest(".module");
-    if (!events.length) eMod?.classList.add("collapsed");
+    const cal = calendarHTML(sportMeta(focusId()));
+    if (!events.length && !cal) eMod?.classList.add("collapsed");
     else {
       eMod?.classList.remove("collapsed");
-      homeEvents.innerHTML =
-        (live.length
-          ? `<div class="feed-card live-card" style="margin-bottom:10px"><div class="feed-kind"><span class="live-dot"></span>Live now</div><div class="card-title" style="margin-top:4px">${escapeHtml(live[0].title)}</div><div class="card-meta">${escapeHtml(live[0].where)} · ${escapeHtml(sportMeta(live[0].sport)?.short || "")}</div></div>`
-          : "") +
-        events
-          .filter((e) => !e.live)
-          .slice(0, 2)
-          .map(eventCardHTML)
-          .join("");
+      homeEvents.innerHTML = events.length
+        ? events
+            .filter((e) => !e.live)
+            .slice(0, 2)
+            .map(eventCardHTML)
+            .join("") + cal
+        : cal;
     }
   }
 
@@ -1171,54 +1282,52 @@ function renderCheckinBar() {
   }
 }
 
+function sportMarkHTML() {
+  const s = sportMeta(focusId());
+  if (!s?.icon) return "";
+  return `<img class="sport-empty" src="${s.icon}" alt="" />`;
+}
+
 function renderGyms() {
   updateLiveStatusBar();
   let list = filterGyms(gymsForSport());
   const listEl = $("#gymList");
   const mapEl = $("#gymMap");
+  const gymScreen = $("#screen-gyms");
   if (!listEl || !mapEl) return;
+  const mapMode = state.gymView !== "list";
+  gymScreen?.classList.toggle("is-map", mapMode);
+  gymScreen?.classList.toggle("is-list", !mapMode);
+  $$("#gymViewSeg .seg-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.view === (mapMode ? "map" : "list"));
+  });
 
   if (state.live.loading && !list.length) {
-    mapEl.classList.add("hidden");
-    listEl.classList.remove("hidden");
     listEl.innerHTML = empty(
       "Finding places near you…",
       "Allow location when asked, or search a city above."
     );
+    if (mapMode && typeof L !== "undefined") renderLiveMap([]);
     return;
   }
 
   if (state.live.error && !list.length) {
-    mapEl.classList.add("hidden");
-    listEl.classList.remove("hidden");
     listEl.innerHTML =
       empty("Couldn’t load places", state.live.error) +
-      `<button type="button" class="btn-primary" id="retryLivePlaces" style="margin-top:12px">Use my location</button>
-       <p class="muted small" style="margin-top:10px">Or type a city above and tap Search area.</p>`;
+      `<button type="button" class="btn-primary" id="retryLivePlaces" style="margin-top:12px">Use my location</button>`;
     $("#retryLivePlaces")?.addEventListener("click", () =>
       loadLivePlaces({ force: true, regeo: true })
     );
     return;
   }
 
-  if (state.gymView === "map") {
-    listEl.classList.add("hidden");
-    mapEl.classList.remove("hidden");
-    if (typeof L === "undefined") {
-      mapEl.innerHTML = empty(
-        "Map is loading…",
-        "Try List view, or open Settings → Refresh app."
-      );
-      return;
-    }
+  if (mapMode && typeof L !== "undefined") {
     if (!document.getElementById("liveMap")) {
-      mapEl.innerHTML = `<div id="liveMap" class="live-map" role="application" aria-label="Venue map"></div>
-        <p class="map-caption">Tap a pin for details · same places as list</p>`;
+      mapEl.innerHTML = `<div id="liveMap" class="live-map" role="application" aria-label="Venue map"></div>`;
     }
     renderLiveMap(list);
-  } else {
-    mapEl.classList.add("hidden");
-    listEl.classList.remove("hidden");
+  }
+  {
     const focus = focusId();
     const matchCount = focus
       ? list.filter((g) => (g.sports || []).includes(focus)).length
@@ -1439,11 +1548,9 @@ function openGymDetail(id, opts = {}) {
   const social = g.social || {};
   const agg =
     typeof ReviewSystem !== "undefined" ? ReviewSystem.aggregateRating(g.id, sport) : null;
-  const hoursDisplay =
-    g.hours ||
-    (g.live ? "Hours not listed — check the website or Maps" : "—");
+  const hoursDisplay = g.hours || "Hours not listed";
   const openLabel =
-    g.open === false ? "May be closed" : g.hours ? "See hours" : "Nearby";
+    g.open === true ? "Open now" : g.open === false ? "Closed now" : "Hours not confirmed";
 
   $("#gymDetailBody").innerHTML = `
     <div class="detail-hero">
@@ -1622,9 +1729,10 @@ function renderPartners() {
     </article>`
         )
         .join("")
-    : empty(
+    : sportMarkHTML() +
+      empty(
         "No partners nearby yet",
-        "When athletes nearby open to train, they’ll show up here. Nothing invented."
+        "When athletes nearby open to train, they’ll show up here."
       );
 
   $$("[data-match]").forEach((btn) => {
@@ -1769,15 +1877,19 @@ function renderFeed() {
     const list = forYouFeedItems();
     body.innerHTML = list.length
       ? list.join("")
-      : empty(
+      : sportMarkHTML() +
+        empty(
           "Your loop is quiet",
-          "Save places you train and set a first-choice sport. Updates show up when something’s actually happening."
-        );
+          "Save places you train. Updates show up when something is actually happening."
+        ) +
+        calendarHTML(s);
   } else if (state.feedMode === "events") {
     const list = eventsForSport({ upcomingOnly: true });
     body.innerHTML = list.length
       ? list.map(eventCardHTML).join("")
-      : empty("No upcoming events", "Events from gyms and orgs will land here when connected.");
+      : sportMarkHTML() +
+        empty("No events listed here yet", "The official calendar is the accurate place to look.") +
+        calendarHTML(s);
   } else if (state.feedMode === "live") {
     const list = eventsForSport({ liveOnly: true });
     body.innerHTML = list.length
@@ -2940,7 +3052,9 @@ function bind() {
       return;
     }
     const card = e.target.closest(".card[data-gym]");
-    if (card?.dataset.gym) openGymDetail(card.dataset.gym, { historyMode: "push" });
+    if (card?.dataset.gym && !e.target.closest("a")) {
+      openGymDetail(card.dataset.gym, { historyMode: "push" });
+    }
 
     const nbtn = e.target.closest("[data-notify]");
     if (nbtn && (state.tab === "home" || state.tab === "feed")) {
@@ -2975,6 +3089,7 @@ function bind() {
       searchCityAndLoad();
     }
   });
+  bindSpeechSearch();
 
   $("#gymViewSeg")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-view]");

@@ -16,7 +16,7 @@ const DEFAULT_PARTNER_FILTERS = [
 ];
 
 function sportDef(partial) {
-  return {
+  const sport = {
     ranks: false,
     depth: "template",
     gymFilters: DEFAULT_GYM_FILTERS,
@@ -31,6 +31,8 @@ function sportDef(partial) {
     roiSurfaces: ["classes", "open now", "local partners"],
     ...partial,
   };
+  if (sport.icon && !sport.icon.includes("?")) sport.icon += "?v=3";
+  return sport;
 }
 
 const SPORTS = [
@@ -383,7 +385,25 @@ const SPORTS = [
   }),
 ];
 
-/** Live venues only — populated by places-live.js (OSM / Google / Geoapify). Never use fake gyms. */
+/** Official public calendars only. No invented event cards. */
+const CALENDARS = {
+  bjj: { label: "IBJJF calendar", href: "https://ibjjf.com/events/calendar" },
+  mma: { label: "UFC schedule", href: "https://www.ufc.com/events" },
+  kickboxing: { label: "WAKO", href: "https://www.wako.sport/" },
+  judo: { label: "IJF calendar", href: "https://www.ijf.org/calendar" },
+  crossfit: { label: "CrossFit Games calendar", href: "https://games.crossfit.com/calendar" },
+  hyrox: { label: "Find a HYROX race", href: "https://www.hyrox.com/find-my-race/" },
+  pickleball: { label: "Pickleball tournaments", href: "https://pickleballtournaments.com/" },
+  soccer: { label: "U.S. Soccer calendar", href: "https://www.ussoccer.com/calendar" },
+  volleyball: { label: "USA Volleyball events", href: "https://usavolleyball.org/events/" },
+  cycling: { label: "USA Cycling events", href: "https://www.usacycling.org/events" },
+  climbing: { label: "IFSC calendar", href: "https://www.ifsc-climbing.org/calendar" },
+};
+SPORTS.forEach((s) => {
+  if (CALENDARS[s.id]) s.calendar = CALENDARS[s.id];
+});
+
+/** Live venues only. Never use fake gyms. */
 const GYMS = [];
 
 /** Real partners require signed-in users (Supabase). Empty until network exists. */

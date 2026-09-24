@@ -324,11 +324,7 @@ function openAboutSheet(opts = {}) {
     if (typeof UpdateCheck !== "undefined") {
       const result = await UpdateCheck.check({ forceBanner: true });
       if (result === "current" && !document.getElementById("updateBanner")) {
-        alert(
-          window.ROLLPHASE_BUILD?.version
-            ? `You’re on the latest version (${window.ROLLPHASE_BUILD.version}).`
-            : "You’re on the latest version."
-        );
+        alert("You’re on the latest version.");
       }
       if (result === "update") betaCloseOverlay(sheet);
     } else {

@@ -1,6 +1,6 @@
 {
-  "version": "0.5.0",
-  "buildId": "20260805-2209-b0c7f28",
-  "builtAt": "2026-08-05T22:09:11.879Z",
-  "message": "Product UI police: no stack leaks or stub copy"
+  "version": "0.6.0",
+  "buildId": "20260924-1157-ede83e5",
+  "builtAt": "2026-09-24T11:57:06.535Z",
+  "message": "Live map, sport look, and place actions"
 }

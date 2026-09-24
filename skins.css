@@ -680,12 +680,82 @@ body.beta-locked .stage {
   font-family: inherit;
   font-size: 0.85rem;
 }
-.city-search-row .loc-search {
+.city-search-row .loc-search,
+.city-search-row .btn-primary {
+  width: auto;
+  margin-top: 0;
   flex-shrink: 0;
   padding: 10px 14px;
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 700;
+  box-shadow: none;
+}
+.city-search-row .mic-btn {
+  width: 48px;
+  min-height: 44px;
+  margin-top: 0;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-weight: 700;
+}
+.city-search-row .mic-btn.listening {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.calendar-out {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 650;
+}
+.calendar-out:hover { border-color: var(--accent); }
+.gym-stage { position: relative; min-height: 280px; }
+#screen-gyms.is-map .gym-stage { height: min(62vh, 520px); }
+#screen-gyms.is-map .map-panel { height: 100%; min-height: 0; }
+#screen-gyms.is-map .live-map { height: 100%; min-height: 280px; }
+#screen-gyms.is-map .gym-sheet {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  max-height: 46%;
+  overflow: auto;
+  z-index: 500;
+  margin: 0;
+  padding: 8px 8px 4px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg1) 92%, transparent);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+}
+#screen-gyms.is-list .map-panel { display: none; }
+#screen-gyms.is-list .gym-sheet {
+  position: static;
+  max-height: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.sport-empty {
+  width: 112px;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 22px;
+  display: block;
+  margin: 12px auto 4px;
+  background: #000;
 }
 .map-panel {
   position: relative;
@@ -1576,7 +1646,7 @@ body {
 }
 .brand-name { font-weight: 700; font-size: 0.95rem; letter-spacing: var(--letter); }
 .brand-sub {
-  font-size: 0.68rem; color: var(--muted);
+  font-size: 0.68rem; color: var(--accent);
   transition: color var(--transition-skin);
 }
 .brand-sub .vibe { color: var(--accent); font-weight: 600; }
@@ -1771,6 +1841,19 @@ body {
 .card-title { font-weight: 700; font-size: 0.95rem; letter-spacing: var(--letter); }
 .card-meta { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
 .card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.place-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.place-tool {
+  min-height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
 .tag-pill {
   font-size: 0.68rem; font-weight: 600;
   padding: 4px 8px; border-radius: 999px;
@@ -2102,7 +2185,7 @@ body {
   right: 0;
   display: flex;
   align-items: flex-end;
-  background: linear-gradient(to top, rgba(0,0,0,0.96) 50%, rgba(0,0,0,0.82));
+  background: linear-gradient(to top, var(--bg0) 55%, rgba(0,0,0,0.72));
   backdrop-filter: blur(20px) saturate(1.2);
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
   border-top: 1px solid rgba(var(--accent-rgb), 0.15);
