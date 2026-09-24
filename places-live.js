@@ -92,7 +92,14 @@ const PlacesLive = (() => {
   };
 
   function config() {
-    return (typeof window !== "undefined" && window.ROLLPHASE_CONFIG) || {};
+    const file = (typeof window !== "undefined" && window.ROLLPHASE_CONFIG) || {};
+    let saved = "";
+    try {
+      saved = JSON.parse(localStorage.getItem("rollphase.settings.v1") || "{}").googlePlacesApiKey || "";
+    } catch {
+      saved = "";
+    }
+    return { ...file, googlePlacesApiKey: String(saved || file.googlePlacesApiKey || "").trim() };
   }
 
   function haversineMi(lat1, lon1, lat2, lon2) {

@@ -35,6 +35,93 @@ const state = {
   },
 };
 
+const PROFILE_KEY = "rollphase.profile.v1";
+const SETTINGS_KEY = "rollphase.settings.v1";
+
+function defaultSettings() {
+  return { text: "md", haptics: true, googlePlacesApiKey: "" };
+}
+
+function loadSettings() {
+  try {
+    return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+  } catch {
+    return defaultSettings();
+  }
+}
+
+function applySettings(s) {
+  const text = s?.text === "sm" || s?.text === "lg" ? s.text : "md";
+  document.documentElement.dataset.text = text;
+}
+
+function saveSettings(partial) {
+  const next = { ...loadSettings(), ...partial };
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore quota */
+  }
+  applySettings(next);
+  return next;
+}
+
+function buzz(ms) {
+  if (!loadSettings().haptics) return;
+  try {
+    navigator.vibrate?.(ms || 12);
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadPersisted() {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    const blank = emptyProfile();
+    state.profile = {
+      ...blank,
+      ...saved,
+      notify: { ...blank.notify, ...(saved.notify || {}) },
+      represent: { ...blank.represent, ...(saved.represent || {}) },
+    };
+    if (saved.agePool === "teen" || saved.agePool === "adult") state.agePool = saved.agePool;
+    if (saved.focusSport) state.sport = saved.focusSport;
+  } catch {
+    /* ignore bad storage */
+  }
+  applySettings(loadSettings());
+}
+
+function savePersisted() {
+  try {
+    const snap = {
+      ...state.profile,
+      agePool: state.agePool,
+      focusSport: state.sport || null,
+    };
+    delete snap.googlePlacesApiKey;
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(snap));
+  } catch {
+    /* quota: drop the photo and try once */
+    try {
+      const slim = { ...state.profile, photoDataUrl: null, agePool: state.agePool, focusSport: state.sport || null };
+      if (slim.represent) slim.represent = { ...slim.represent, logoDataUrl: null };
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(slim));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+let saveTimer = null;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(savePersisted, 250);
+}
+
 function emptyProfile() {
   return {
     displayName: "Guest",
@@ -413,6 +500,7 @@ function renderStageSwatches() {
 
 /** Set optional focus for today. null = explore all. Never permanent lock. */
 function setSport(id) {
+  if ((state.sport || null) !== (id || null)) buzz(10);
   applySkin(id || null);
   state.checkedInGym = null;
   safeRenderAll();
@@ -459,6 +547,7 @@ function safeRenderAll() {
     console.error("renderAll", e);
   } finally {
     state._rendering = false;
+    scheduleSave();
   }
 }
 
@@ -990,6 +1079,15 @@ function placeToolsHTML(g) {
   }
   const maps = g.mapsUrl || mapsSearchUrl(g.name, g.address);
   if (maps) bits.push(`<a class="place-tool" href="${escapeHtml(maps)}" target="_blank" rel="noopener">Map</a>`);
+  const dest =
+    g.lat != null && g.lng != null
+      ? `${g.lat},${g.lng}`
+      : encodeURIComponent([g.name, g.address].filter(Boolean).join(" "));
+  if (dest) {
+    bits.push(
+      `<a class="place-tool" href="https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving" target="_blank" rel="noopener">Go</a>`
+    );
+  }
   return bits.length ? `<div class="place-tools">${bits.join("")}</div>` : "";
 }
 
@@ -1670,6 +1768,7 @@ function openGymDetail(id, opts = {}) {
     document.querySelector('.detail-tab[data-panel="reviews"]')?.click();
   });
   $("#checkInHere")?.addEventListener("click", () => {
+    buzz(20);
     state.checkedInGym = g.id;
     if (sport) applySkin(sport, { flash: false });
     if (typeof ReviewSystem !== "undefined") ReviewSystem.recordVisit(g.id, sport);
@@ -2430,6 +2529,61 @@ function paintProfileHero() {
   }
 }
 
+function bindPhoneSettings() {
+  const settings = loadSettings();
+  $$("#textSizeSeg .seg-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.text === (settings.text || "md"));
+  });
+  const hap = $("#hapticsOn");
+  if (hap) hap.checked = settings.haptics !== false;
+  const status = $("#placesKeyStatus");
+  if (status) {
+    status.textContent = settings.googlePlacesApiKey
+      ? "A key is saved on this phone. The next search can use it."
+      : "No key saved. The free map search is still on.";
+  }
+  const seg = $("#textSizeSeg");
+  if (seg && seg.dataset.bound !== "1") {
+    seg.dataset.bound = "1";
+    seg.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-text]");
+      if (!btn) return;
+      buzz(8);
+      saveSettings({ text: btn.dataset.text });
+      $$("#textSizeSeg .seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    });
+  }
+  if (hap && hap.dataset.bound !== "1") {
+    hap.dataset.bound = "1";
+    hap.addEventListener("change", () => {
+      saveSettings({ haptics: hap.checked });
+      if (hap.checked) buzz(16);
+    });
+  }
+  const saveKey = $("#savePlacesKey");
+  if (saveKey && saveKey.dataset.bound !== "1") {
+    saveKey.dataset.bound = "1";
+    saveKey.addEventListener("click", () => {
+      const value = ($("#placesKeyInput")?.value || "").trim();
+      if (!value) return;
+      saveSettings({ googlePlacesApiKey: value });
+      if ($("#placesKeyInput")) $("#placesKeyInput").value = "";
+      buzz(12);
+      bindPhoneSettings();
+      loadLivePlaces({ force: true });
+    });
+  }
+  const clearKey = $("#clearPlacesKey");
+  if (clearKey && clearKey.dataset.bound !== "1") {
+    clearKey.dataset.bound = "1";
+    clearKey.addEventListener("click", () => {
+      saveSettings({ googlePlacesApiKey: "" });
+      if ($("#placesKeyInput")) $("#placesKeyInput").value = "";
+      bindPhoneSettings();
+    });
+  }
+}
+
 function renderProfile() {
   // Panel visibility
   if (state.profilePanel === "settings") {
@@ -2441,6 +2595,7 @@ function renderProfile() {
   }
 
   paintProfileHero();
+  $$("#ageDemo .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.age === state.agePool));
 
   const photoInput = $("#profilePhotoFile");
   if (photoInput && photoInput.dataset.bound !== "1") {
@@ -2483,6 +2638,7 @@ function renderProfile() {
       closeProfileSettings({ useHistory: true })
     );
   }
+  bindPhoneSettings();
 
   const sportsHost = $("#profileSports");
   if (sportsHost) {
@@ -2798,6 +2954,7 @@ function showScreen(name) {
 function switchTab(tab, opts = {}) {
   const historyMode = opts.historyMode || "replace";
   if (!MAIN_TABS.has(tab)) tab = "home";
+  if (state.tab !== tab && !state._navSilent) buzz(8);
 
   closeOverlays({ fromHistory: state._navSilent });
 
@@ -3136,6 +3293,7 @@ function bind() {
     if (!btn) return;
     state.agePool = btn.dataset.age;
     $$("#ageDemo .seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    scheduleSave();
     if (state.tab === "partners") renderPartners();
   });
 
@@ -3158,8 +3316,12 @@ function bind() {
 /* Boot — resilient */
 (function boot() {
   try {
+    loadPersisted();
+    applySettings(loadSettings());
     // Emphasize first-choice sport when profile has one (still optional to clear)
-    if (primarySportId()) {
+    if (state.sport) {
+      /* kept from this phone */
+    } else if (primarySportId()) {
       state.sport = primarySportId();
     } else if (hasProfileSports()) {
       state.sport = profileSports()[0].id;

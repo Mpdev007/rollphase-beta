@@ -1490,6 +1490,9 @@ body.beta-locked .stage {
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
+html[data-text="sm"] { font-size: 15px; }
+html[data-text="md"] { font-size: 17px; }
+html[data-text="lg"] { font-size: 19px; }
 body {
   font-family: var(--font);
   background: #040506;
