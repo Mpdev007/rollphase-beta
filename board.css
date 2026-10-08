@@ -1,0 +1,354 @@
+/* The Mat Board — one page per gym. Mobile-first (360px), uses the app's existing tokens. */
+.mat-board {
+  margin-bottom: 18px;
+}
+.mb-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.mb-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.mb-sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.mb-fee-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.mb-fee-row a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+}
+.mb-offline-note {
+  background: rgba(245, 165, 36, 0.12);
+  border: 1px solid rgba(245, 165, 36, 0.3);
+  color: var(--warn);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 0.76rem;
+  margin-bottom: 12px;
+}
+.mb-refusal-note {
+  background: rgba(255, 92, 122, 0.1);
+  border: 1px solid rgba(255, 92, 122, 0.28);
+  color: #ffb3c1;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 0.76rem;
+  margin: 8px 0;
+}
+
+/* Here now */
+.mb-here {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.mb-here-title {
+  font-weight: 800;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+.mb-here-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.mb-here-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px 6px 6px;
+  font-size: 0.78rem;
+}
+.mb-here-chip .av {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+.mb-attest-btn {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-top: -2px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mb-attest-msg {
+  font-size: 0.76rem;
+  margin: 8px 0;
+}
+.mb-attest-msg.ok { color: var(--open); }
+.mb-attest-msg.err { color: var(--live); }
+.mb-checkin-btn {
+  width: 100%;
+  padding: 12px;
+}
+.mb-checkin-status {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-top: 8px;
+  text-align: center;
+}
+.mb-checkin-status.ok { color: var(--open); }
+.mb-checkin-status.err { color: var(--live); }
+
+/* Week grid */
+.mb-day-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 14px 0 6px;
+}
+.mb-day-label:first-child { margin-top: 0; }
+.mb-day-label.today { color: var(--accent); }
+
+.mb-slot {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.mb-slot-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.mb-slot-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.mb-share-session {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.mb-slot.is-shared {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.mb-slot-time {
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.mb-slot-kind {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.mb-kind-badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  white-space: nowrap;
+}
+.mb-kind-badge.teen { background: rgba(245, 165, 36, 0.14); color: var(--warn); }
+.mb-slot-gear {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.mb-chip {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+.mb-slot-conf {
+  font-size: 0.66rem;
+  color: var(--muted);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mb-slot-conf.unconfirmed { color: var(--warn); }
+.mb-slot-conf a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+  margin-left: 8px;
+}
+.mb-slot-in {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+.mb-imin {
+  min-width: 84px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-elev);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.mb-imin.on {
+  background: rgba(46, 230, 197, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.mb-imin-names {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-top: 7px;
+  line-height: 1.4;
+}
+.mb-imin-names b { color: var(--text); font-weight: 700; }
+.mb-imin-names .verified { color: var(--open); font-weight: 700; }
+.mb-count-hidden {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-top: 7px;
+}
+.mb-signup-btn {
+  margin-top: 9px;
+  width: 100%;
+  padding: 10px;
+}
+.mb-family-mine {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-top: 7px;
+}
+.mb-family-signup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 7px;
+}
+.mb-family-msg:empty { display: none; }
+.mb-request-family-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+}
+
+.mb-empty {
+  background: var(--bg-card);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  text-align: center;
+  margin-bottom: 14px;
+}
+.mb-empty p { color: var(--muted); font-size: 0.84rem; margin: 6px 0 12px; }
+
+.mb-add-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 11px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+/* Add/Edit sheet — reuses .overlay/.sheet from styles.css */
+.mb-sheet label {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.mb-sheet label > span { display: block; margin-bottom: 4px; color: var(--text); font-weight: 700; }
+.mb-sheet input,
+.mb-sheet select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  outline: none;
+}
+.mb-gear-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mb-gear-chip {
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-elev);
+  color: var(--muted);
+  cursor: pointer;
+}
+.mb-gear-chip.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.mb-sheet-error {
+  color: var(--live);
+  font-size: 0.78rem;
+  margin: 6px 0;
+}
+.mb-sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mb-sheet-actions button { flex: 1; padding: 12px; }

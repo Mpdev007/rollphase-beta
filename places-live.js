@@ -12,6 +12,30 @@
 const PlacesLive = (() => {
   const UA = "RollPhase/1.0 (athlete venues; https://github.com/Mpdev007/rollphase)";
 
+  /**
+   * One FIFO queue for every Nominatim request in the app (search, reverse geocode, the
+   * sport-query loop), so calls are spaced >= 1,000 ms apart by when they START — matching
+   * Nominatim's 1 req/s policy — without an unconditional flat sleep that over-waits when the
+   * previous request itself was slow, and without holding up unrelated data (gyms_near, or a
+   * Nominatim call already in flight resolving on its own schedule).
+   */
+  let lastNominatimStartAt = 0;
+  let nominatimChain = Promise.resolve();
+  function throttledNominatim(fn) {
+    const run = async () => {
+      const wait = Math.max(0, lastNominatimStartAt + 1000 - Date.now());
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastNominatimStartAt = Date.now();
+      return fn();
+    };
+    const result = nominatimChain.then(run, run);
+    nominatimChain = result.then(
+      () => {},
+      () => {}
+    );
+    return result;
+  }
+
   const OVERPASS_URLS = [
     "https://lz4.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -388,13 +412,12 @@ const PlacesLive = (() => {
   async function fetchNominatimNearby({ lat, lng, radiusM = 12000, sportId = null }) {
     const vb = viewbox(lat, lng, radiusM);
     const terms = (sportId && SPORT_QUERIES[sportId]) || ["gym", "fitness centre", "dojo"];
-    // 2 queries max to respect Nominatim 1 req/s policy (sequential)
+    // 2 queries max to respect Nominatim 1 req/s policy (paced by the shared throttle below)
     const use = terms.slice(0, 2);
     const all = [];
     for (let i = 0; i < use.length; i++) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 1100));
       try {
-        const rows = await withTimeout(nominatimSearch(use[i], vb), 12000, "nominatim");
+        const rows = await throttledNominatim(() => withTimeout(nominatimSearch(use[i], vb), 12000, "nominatim"));
         rows.forEach((row) => {
           const p = nominatimToPlace(row, lat, lng, sportId);
           if (p && p.mi <= (radiusM / 1609.34) * 1.15) all.push(p);
@@ -405,9 +428,8 @@ const PlacesLive = (() => {
     }
     // Always include a plain "gym" pass if sport-specific returned little
     if (all.length < 5 && !use.includes("gym")) {
-      await new Promise((r) => setTimeout(r, 1100));
       try {
-        const rows = await withTimeout(nominatimSearch("gym", vb), 12000, "nominatim");
+        const rows = await throttledNominatim(() => withTimeout(nominatimSearch("gym", vb), 12000, "nominatim"));
         rows.forEach((row) => {
           const p = nominatimToPlace(row, lat, lng, sportId);
           if (p) all.push(p);
@@ -664,69 +686,260 @@ out center tags 40;`;
     return dedupePlaces(list);
   }
 
-  /* ---------- Geocode city / reverse ---------- */
+  /* ---------- Geocode city / reverse (also through the shared throttle: 1 req/s app-wide) ---------- */
   async function geocodePlace(query) {
-    const u = new URL("https://nominatim.openstreetmap.org/search");
-    u.searchParams.set("q", query);
-    u.searchParams.set("format", "json");
-    u.searchParams.set("limit", "1");
-    const res = await fetch(u.toString(), {
-      headers: { Accept: "application/json", "User-Agent": UA },
-    });
-    if (!res.ok) throw new Error(`Geocode ${res.status}`);
-    const rows = await res.json();
-    if (!rows.length) throw new Error("Place not found");
-    return {
-      lat: parseFloat(rows[0].lat),
-      lng: parseFloat(rows[0].lon),
-      label: rows[0].display_name,
-    };
-  }
-
-  async function reverseGeocode(lat, lng) {
-    try {
-      const u = new URL("https://nominatim.openstreetmap.org/reverse");
-      u.searchParams.set("lat", String(lat));
-      u.searchParams.set("lon", String(lng));
+    return throttledNominatim(async () => {
+      const u = new URL("https://nominatim.openstreetmap.org/search");
+      u.searchParams.set("q", query);
       u.searchParams.set("format", "json");
+      u.searchParams.set("limit", "1");
       const res = await fetch(u.toString(), {
         headers: { Accept: "application/json", "User-Agent": UA },
       });
-      if (!res.ok) return null;
-      const data = await res.json();
-      const a = data.address || {};
-      return a.city || a.town || a.village || a.suburb || a.county || data.name || null;
+      if (!res.ok) throw new Error(`Geocode ${res.status}`);
+      const rows = await res.json();
+      if (!rows.length) throw new Error("Place not found");
+      return {
+        lat: parseFloat(rows[0].lat),
+        lng: parseFloat(rows[0].lon),
+        label: rows[0].display_name,
+      };
+    });
+  }
+
+  async function reverseGeocode(lat, lng) {
+    return throttledNominatim(async () => {
+      try {
+        const u = new URL("https://nominatim.openstreetmap.org/reverse");
+        u.searchParams.set("lat", String(lat));
+        u.searchParams.set("lon", String(lng));
+        u.searchParams.set("format", "json");
+        const res = await fetch(u.toString(), {
+          headers: { Accept: "application/json", "User-Agent": UA },
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const a = data.address || {};
+        return a.city || a.town || a.village || a.suburb || a.county || data.name || null;
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  /* ---------- I5: the app-owned venue cache, checked before any OSM call ---------- */
+
+  /** Standard 5-character geohash (~4.9 x 4.9 km cells) — no external dependency. */
+  function geohash5(lat, lng) {
+    const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
+    let latRange = [-90, 90],
+      lngRange = [-180, 180];
+    let hash = "",
+      bit = 0,
+      ch = 0,
+      evenBit = true;
+    while (hash.length < 5) {
+      if (evenBit) {
+        const mid = (lngRange[0] + lngRange[1]) / 2;
+        if (lng >= mid) {
+          ch |= 1 << (4 - bit);
+          lngRange[0] = mid;
+        } else lngRange[1] = mid;
+      } else {
+        const mid = (latRange[0] + latRange[1]) / 2;
+        if (lat >= mid) {
+          ch |= 1 << (4 - bit);
+          latRange[0] = mid;
+        } else latRange[1] = mid;
+      }
+      evenBit = !evenBit;
+      if (bit < 4) bit++;
+      else {
+        hash += BASE32[ch];
+        bit = 0;
+        ch = 0;
+      }
+    }
+    return hash;
+  }
+
+  const OSM_AREA_PREFIX = "rollphase.osmArea.";
+  const OSM_AREA_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+  function areaQueriedRecently(lat, lng) {
+    try {
+      const at = +(localStorage.getItem(OSM_AREA_PREFIX + geohash5(lat, lng)) || 0);
+      return at > 0 && Date.now() - at < OSM_AREA_MAX_AGE_MS;
     } catch {
-      return null;
+      return false;
+    }
+  }
+
+  function markAreaQueried(lat, lng) {
+    try {
+      localStorage.setItem(OSM_AREA_PREFIX + geohash5(lat, lng), String(Date.now()));
+    } catch {
+      /* private mode / quota */
+    }
+  }
+
+  const round3 = (n) => Math.round(n * 1000) / 1000;
+  const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function fmtSlotClock(startMin) {
+    const h24 = Math.floor(startMin / 60);
+    const m = startMin % 60;
+    const ampm = h24 >= 12 ? "PM" : "AM";
+    const h12 = h24 % 12 || 12;
+    return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+  }
+
+  /** Minutes from now until this week's (or next week's) occurrence of a weekday+start_min slot. */
+  function minutesUntilOccurrence(weekday, startMin, now) {
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let dayDelta = weekday - now.getDay();
+    if (dayDelta < 0 || (dayDelta === 0 && startMin < nowMin)) dayDelta += 7;
+    return dayDelta * 1440 + (startMin - nowMin);
+  }
+
+  /**
+   * Step 9: "Next open mat: <weekday time>" (plus gear and the drop-in fee, when set) for a card
+   * with boardSlots > 0 — folded into venueShell's existing `next[sport]` field so app.js's
+   * (unchanged) gymCardHTML renders it exactly like any other next-class line.
+   */
+  function nextOpenMatLine(slotRows, sport, dropinFee, now) {
+    const upcoming = slotRows
+      .filter((s) => s.sport === sport && s.audience === "adult" && !s.removed_at)
+      .map((s) => ({ ...s, inMin: minutesUntilOccurrence(s.weekday, s.start_min, now) }))
+      .sort((a, b) => a.inMin - b.inMin);
+    if (!upcoming.length) return null;
+    const soonest = upcoming[0];
+    const gear = (soonest.gear || []).join(", ");
+    const bits = [`Next open mat: ${WEEKDAY_SHORT[soonest.weekday]} ${fmtSlotClock(soonest.start_min)}`];
+    if (gear) bits.push(gear);
+    if (dropinFee) bits.push(dropinFee);
+    return bits.join(" · ");
+  }
+
+  /** RollPhase's own gyms, from Supabase — the venue any member has ever opened or added. */
+  async function fetchOwnVenues({ lat, lng, radiusM }) {
+    if (typeof window === "undefined" || !window.RP || !window.RP.db) return [];
+    try {
+      const { data: rows, error } = await window.RP.db.rpc("gyms_near", {
+        p_lat: round3(lat),
+        p_lng: round3(lng),
+        p_km: radiusM / 1000,
+      });
+      if (error || !rows) return [];
+      const ids = rows.map((r) => r.id);
+      let sportsByGym = new Map();
+      let slotsByGym = new Map();
+      let detailsByGym = new Map();
+      if (ids.length) {
+        const [{ data: slotRows }, { data: gymRows }] = await Promise.all([
+          window.RP.db.from("board_slots").select("gym_id,sport,weekday,start_min,gear,audience,removed_at").in("gym_id", ids),
+          // gyms_near's own columns don't include address/phone/website/source — a native venue
+          // (source != 'osm') needs these from the gyms row so the venue facts block can render
+          // them exactly like OSM facts (step 6's own requirement).
+          window.RP.db.from("gyms").select("id,address,phone,website,source").in("id", ids),
+        ]);
+        for (const s of slotRows || []) {
+          if (!sportsByGym.has(s.gym_id)) sportsByGym.set(s.gym_id, new Set());
+          sportsByGym.get(s.gym_id).add(s.sport);
+          if (!slotsByGym.has(s.gym_id)) slotsByGym.set(s.gym_id, []);
+          slotsByGym.get(s.gym_id).push(s);
+        }
+        for (const g of gymRows || []) detailsByGym.set(g.id, g);
+      }
+      const now = new Date();
+      return rows.map((r) => {
+        const detail = detailsByGym.get(r.id) || {};
+        const sports = [...(sportsByGym.get(r.id) || [])];
+        const slotCount = Number(r.slot_count) || 0;
+        const next = {};
+        if (slotCount > 0) {
+          for (const sport of sports) {
+            const line = nextOpenMatLine(slotsByGym.get(r.id) || [], sport, r.dropin_fee, now);
+            if (line) next[sport] = line;
+          }
+        }
+        return venueShell({
+          id: r.id,
+          source: detail.source || "own",
+          name: r.name,
+          city: r.city || "",
+          address: detail.address || "",
+          phone: detail.phone || "",
+          website: detail.website || "",
+          dropinFee: r.dropin_fee || null,
+          mi: Math.round(r.km * 0.621371 * 10) / 10,
+          lat: r.lat,
+          lng: r.lng,
+          boardSlots: slotCount,
+          sports,
+          next,
+          mapsUrl: mapsSearchUrl(r.name, detail.address || r.city || "", r.lat, r.lng),
+        });
+      });
+    } catch (e) {
+      console.warn("gyms_near failed", e);
+      return [];
     }
   }
 
   /**
-   * Main entry — merge free sources; prefer Google when keyed.
+   * Main entry — RollPhase's own venue cache first, OSM/Google only as needed.
+   * app.js's own boot sequence calls this twice back to back (once from switchTab("home"), once
+   * forced right after) before either call's own gyms_near step can resolve. Without
+   * de-duplication both calls would race their own independent OSM fetches against each other,
+   * so a "before any OSM call" guarantee that holds *within* one call wouldn't hold *across* two
+   * overlapping ones. Concurrent calls for the same area collapse into a single real sequence.
    */
-  async function fetchNearby(opts) {
+  const inFlightNearby = new Map();
+  function fetchNearby(opts) {
+    const key = `${round3(opts.lat)},${round3(opts.lng)},${opts.radiusM || 0},${opts.sportId || ""}`;
+    if (inFlightNearby.has(key)) return inFlightNearby.get(key);
+    const p = fetchNearbyUncached(opts);
+    inFlightNearby.set(key, p);
+    // This chain's own result is never awaited by anyone (the caller gets `p` itself), so if it
+    // rejects it becomes an unhandled promise rejection — surfaces as a pageerror in a real
+    // browser even though the caller of fetchNearby() still sees and can handle the rejection.
+    p.finally(() => {
+      if (inFlightNearby.get(key) === p) inFlightNearby.delete(key);
+    }).catch(() => {});
+    return p;
+  }
+
+  async function fetchNearbyUncached(opts) {
     const cfg = config();
     const radiusM = opts.radiusM || cfg.defaultRadiusM || 12000;
     const base = { ...opts, radiusM };
 
+    const own = await fetchOwnVenues(base);
+    const skipOsm = own.length >= 5 || areaQueriedRecently(base.lat, base.lng);
+    if (skipOsm) {
+      return { provider: own.length ? "own" : "nominatim", places: own, sources: own.length ? ["own"] : [] };
+    }
+
     if (cfg.googlePlacesApiKey) {
       try {
         const places = await fetchGoogleCombined(base);
-        if (places.length) return { provider: "google", places };
+        if (places.length) return { provider: "google", places: dedupePlaces([...own, ...places]), sources: ["own", "google"] };
       } catch (e) {
         console.warn("Google Places failed, free stack next", e);
       }
     }
 
-    // Free stack in parallel where possible (Nominatim sequential inside)
+    // Free stack in parallel where possible (Nominatim throttled to 1 req/s inside)
     const [nom, pho, osm] = await Promise.allSettled([
       fetchNominatimNearby(base),
       fetchPhotonNearby(base),
       fetchOsmNearby(base),
     ]);
+    markAreaQueried(base.lat, base.lng);
 
-    const parts = [];
-    const sources = [];
+    const parts = [...own];
+    const sources = own.length ? ["own"] : [];
     if (nom.status === "fulfilled" && nom.value.length) {
       parts.push(...nom.value);
       sources.push("nominatim");
@@ -751,9 +964,10 @@ out center tags 40;`;
       throw err;
     }
 
-    // Prefer venues with contact info when merging
+    // Prefer venues with contact info when merging, but keep RollPhase's own venues on top —
+    // they carry the schedule this app is for.
     places.sort((a, b) => {
-      const score = (p) => (p.phone ? 2 : 0) + (p.website ? 2 : 0) + (p.hours ? 1 : 0) - p.mi * 0.01;
+      const score = (p) => (p.source === "own" ? 100 : 0) + (p.phone ? 2 : 0) + (p.website ? 2 : 0) + (p.hours ? 1 : 0) - p.mi * 0.01;
       return score(b) - score(a);
     });
 
@@ -762,7 +976,9 @@ out center tags 40;`;
         ? "nominatim"
         : sources.includes("osm")
           ? "osm"
-          : "photon",
+          : sources.includes("photon")
+            ? "photon"
+            : "own",
       places,
       sources,
     };
@@ -907,6 +1123,7 @@ out center tags 40;`;
     fetchPhotonNearby,
     fetchOsmNearby,
     fetchGoogleNearby,
+    fetchOwnVenues,
     getCurrentPosition,
     saveLastLocation,
     loadLastLocation,
@@ -917,5 +1134,8 @@ out center tags 40;`;
     config,
     viewbox,
     openFromHours,
+    geohash5,
+    areaQueriedRecently,
+    markAreaQueried,
   };
 })();

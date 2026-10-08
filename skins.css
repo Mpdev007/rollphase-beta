@@ -706,6 +706,25 @@ body.beta-locked .stage {
   border-color: var(--accent);
   color: var(--accent);
 }
+.calendar-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 8px;
+}
+.calendar-row .calendar-out { flex: 1; margin-top: 0; }
+.calendar-share {
+  flex: none;
+  border-radius: var(--radius);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 0 14px;
+  cursor: pointer;
+}
 .calendar-out {
   display: flex;
   align-items: center;
@@ -721,6 +740,81 @@ body.beta-locked .stage {
   font-weight: 650;
 }
 .calendar-out:hover { border-color: var(--accent); }
+.share-app-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.share-app-copy { flex: 1; min-width: 0; }
+.share-app-copy h3 { margin-bottom: 4px; }
+.share-app-copy .btn-primary { margin-top: 10px; }
+.share-app-card canvas {
+  width: 128px;
+  height: 128px;
+  flex: none;
+  background: #fff;
+  border-radius: 18px;
+}
+.share-qr-frame {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 14px;
+}
+#shareQrCanvas {
+  width: 232px;
+  height: 232px;
+  background: #fff;
+  border-radius: 20px;
+}
+.share-note {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+  margin: 0 8px 12px;
+  line-height: 1.35;
+}
+.share-block-btn { width: 100%; margin-top: 12px; }
+.share-actions { display: flex; flex-direction: column; gap: 8px; }
+.share-actions .btn-primary,
+.share-actions .btn-ghost { width: 100%; padding: 12px; }
+.install-arrival {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: var(--bg-card);
+}
+.install-arrival img {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+.install-arrival strong { display: block; font-size: 0.88rem; }
+.install-arrival p { margin: 2px 0 0; font-size: 0.72rem; color: var(--muted); line-height: 1.35; }
+.install-cal {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.install-arrival-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.install-arrival .btn-primary { padding: 8px 12px; }
+.install-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
 .gym-stage { position: relative; min-height: 280px; }
 #screen-gyms.is-map .gym-stage { height: min(62vh, 520px); }
 #screen-gyms.is-map .map-panel { height: 100%; min-height: 0; }
@@ -1451,6 +1545,14 @@ body.beta-locked .stage {
 .social-field input {
   flex: 1; background: transparent; border: none; outline: none;
   color: var(--text); font-family: inherit; font-size: 0.82rem;
+}
+.assistant-actions { display: flex; gap: 8px; margin-top: 8px; }
+.assistant-actions .btn-primary,
+.assistant-actions .btn-ghost { flex: 1; }
+.assistant-note {
+  width: 100%; box-sizing: border-box; margin-top: 8px; min-height: 96px;
+  background: rgba(0,0,0,0.2); border: 1px solid var(--line); border-radius: 10px;
+  color: var(--text); font: inherit; font-size: 0.75rem; padding: 8px 10px;
 }
 .depth-badge {
   font-size: 0.6rem; font-weight: 700;
@@ -2238,6 +2340,43 @@ body {
   height: 36px;
   object-position: center 18%;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45));
+}
+.tab-glyph canvas.tab-pack {
+  width: 36px;
+  height: 36px;
+  display: none;
+  background: transparent;
+  -webkit-mask-image: none;
+  mask-image: none;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45));
+}
+.tab-bar.is-pack .tab-glyph canvas.tab-pack { display: block; }
+.tab-bar.is-pack .tab-glyph .tab-fallback { display: none; }
+.tab-bar.is-pack .tab.active .tab-glyph {
+  background: none;
+  box-shadow: none;
+}
+.icon-pack-picks, .hue-jumps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.hue-jumps button, .icon-pack-picks .seg-btn {
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.hue-jumps button.on, .icon-pack-picks .seg-btn.active {
+  color: var(--text);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.16);
 }
 .tab.active .tab-glyph img {
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.75));

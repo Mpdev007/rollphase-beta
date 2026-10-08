@@ -15,6 +15,33 @@ const DEFAULT_PARTNER_FILTERS = [
   { id: "near", label: "≤ 3 mi" },
 ];
 
+// What a Mat Board slot's gear picker offers, by sport id — used by board.js's Add/Edit mat time
+// sheet (falls back to its own generic list for a sport not listed here).
+const MAT_GEAR_BY_SPORT = {
+  bjj: ["gi", "no-gi", "gloves"],
+  mma: ["gloves", "shin-guards", "headgear", "mouthguard"],
+  boxing: ["gloves", "handwraps", "headgear", "mouthguard"],
+  wrestling: ["singlet", "headgear"],
+  muaythai: ["gloves", "shin-guards", "handwraps", "mouthguard"],
+  kickboxing: ["gloves", "shin-guards", "handwraps"],
+  judo: ["gi", "belt"],
+  weightlifting: ["lifting shoes", "belt", "wraps"],
+  crossfit: ["lifting shoes", "gloves"],
+  hyrox: ["running shoes", "gloves"],
+  pickleball: ["paddle", "court shoes"],
+  tennis: ["racket", "court shoes"],
+  basketball: ["court shoes"],
+  soccer: ["cleats", "shin-guards"],
+  volleyball: ["knee pads", "court shoes"],
+  pilates: ["grip socks", "mat"],
+  yoga: ["mat", "grip socks"],
+  running: ["running shoes"],
+  cycling: ["helmet", "cycling shoes"],
+  climbing: ["climbing shoes", "chalk", "harness"],
+  swimming: ["goggles", "cap"],
+};
+const GENERIC_MAT_GEAR = ["gi", "no-gi", "gloves", "shin-guards"];
+
 function sportDef(partial) {
   const sport = {
     ranks: false,
@@ -29,6 +56,7 @@ function sportDef(partial) {
     gearTitle: "Gear",
     feedTitle: "Feed",
     roiSurfaces: ["classes", "open now", "local partners"],
+    matGear: MAT_GEAR_BY_SPORT[partial.id] || GENERIC_MAT_GEAR,
     ...partial,
   };
   if (sport.icon && !sport.icon.includes("?")) sport.icon += "?v=7";

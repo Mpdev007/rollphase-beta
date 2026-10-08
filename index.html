@@ -6,6 +6,14 @@
   <title>RollPhase — Train near you</title>
   <meta name="description" content="RollPhase helps athletes find gyms, training partners, events, and gear across every sport — closed beta." />
   <meta name="robots" content="noindex, nofollow" />
+  <meta property="og:title" content="RollPhase — Train near you" />
+  <meta property="og:description" content="See who's training, when, and where — real mat times, real people." />
+  <meta property="og:image" content="assets/share/og.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="RollPhase — Train near you" />
+  <meta name="twitter:description" content="See who's training, when, and where — real mat times, real people." />
+  <meta name="twitter:image" content="assets/share/og.png" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -18,6 +26,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="skins.css" />
+  <link rel="stylesheet" href="board.css" />
+  <link rel="stylesheet" href="poster.css" />
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -173,6 +183,7 @@
 
             <section class="screen detail" data-screen="gym-detail" id="screen-gym-detail">
               <button type="button" class="back-btn" id="gymBack">‹ Gyms</button>
+              <div id="matBoard"></div>
               <div id="gymDetailBody"></div>
             </section>
 
@@ -180,10 +191,7 @@
             <section class="screen" data-screen="partners" id="screen-partners">
               <div class="section-head">
                 <h2 id="partnersTitle">Partners</h2>
-                <span class="badge-soft" id="agePoolBadge">Adult pool</span>
               </div>
-              <p class="hint" id="partnerHint"></p>
-              <div class="filter-row" id="partnerFilters"></div>
               <div id="partnerList" class="list"></div>
             </section>
 
@@ -218,6 +226,15 @@
                     <p class="muted" id="profileAreaLine">Near you · Adult</p>
                     <button type="button" class="btn-ghost profile-settings-btn" id="btnOpenSettings">Settings</button>
                   </div>
+                </div>
+
+                <div class="card static share-app-card" id="shareAppCard">
+                  <div class="share-app-copy">
+                    <h3>Share Rollphase</h3>
+                    <p class="muted small">The mark sits in the code. A phone without the app installs it. A phone with the app opens Rollphase.</p>
+                    <button type="button" class="btn-primary" id="shareAppBtn">Share</button>
+                  </div>
+                  <canvas id="shareAppQr" role="img" aria-label="QR code for Rollphase"></canvas>
                 </div>
 
                 <div class="card static">
@@ -276,6 +293,17 @@
                 </div>
                 <p class="hint">Fine-tuning and app preferences — kept off the main profile.</p>
 
+                <div class="card static" id="iconPackCard">
+                  <h3>Icon pack</h3>
+                  <p class="muted small">The line around the icons. The icon itself stays put.</p>
+                  <div class="icon-pack-picks" id="iconPackPicks"></div>
+                  <label class="rep-slider-label" for="iconHue">Line colour <span id="iconHueLabel">43°</span></label>
+                  <input type="range" id="iconHue" min="0" max="360" value="43" />
+                  <div class="hue-jumps" id="iconHueJumps"></div>
+                  <label class="rep-slider-label" for="iconVis">Line strength <span id="iconVisLabel">46</span></label>
+                  <input type="range" id="iconVis" min="0" max="100" value="46" />
+                </div>
+
                 <div class="card static">
                   <h3>Look · I represent</h3>
                   <p class="muted small">Colors, pattern, crop, and smart palette from your logo.</p>
@@ -292,7 +320,42 @@
                   <h3>Privacy</h3>
                   <label class="toggle-row"><span>Open to train</span><input type="checkbox" id="privOpenTrain" checked /></label>
                   <label class="toggle-row"><span>Show in “here now”</span><input type="checkbox" id="privShowHere" checked /></label>
-                  <label class="toggle-row"><span>Event push notifications</span><input type="checkbox" id="privEventPush" checked /></label>
+                </div>
+
+                <div class="card static" id="assistantCard">
+                  <h3>Your assistant</h3>
+                  <p class="muted small">Muse runs the app with your own Muse account, after the app premium. A Gemini key writes the note about a place and stays on this phone. Both keeps those jobs separate. Rollphase does not pay for either.</p>
+                  <div class="seg" id="assistantMode" style="margin:10px 0">
+                    <button type="button" class="seg-btn" data-assistant="muse">Muse</button>
+                    <button type="button" class="seg-btn" data-assistant="gemini">Gemini</button>
+                    <button type="button" class="seg-btn" data-assistant="both">Both</button>
+                  </div>
+                  <p class="muted small" id="assistantStatus"></p>
+                  <div id="assistantMuseBlock">
+                    <div class="social-field" id="assistantBridgeField">
+                      <label for="assistantBridge">Muse link</label>
+                      <input id="assistantBridge" type="url" inputmode="url" autocomplete="off" placeholder="https://…" />
+                    </div>
+                    <div class="social-field">
+                      <label for="assistantAccount">Account</label>
+                      <input id="assistantAccount" type="text" autocomplete="username" placeholder="Name on the app premium" />
+                    </div>
+                    <div class="assistant-actions">
+                      <button type="button" class="btn-primary" id="assistantMuseBtn">Connect Muse</button>
+                    </div>
+                    <textarea id="assistantMuseNote" class="assistant-note hidden" readonly></textarea>
+                    <button type="button" class="btn-ghost hidden" id="assistantCopyNote" style="width:100%;margin-top:8px">Copy note for Muse</button>
+                  </div>
+                  <div id="assistantGeminiBlock">
+                    <div class="social-field">
+                      <label for="assistantGeminiKey">Gemini key</label>
+                      <input id="assistantGeminiKey" type="password" autocomplete="off" placeholder="Paste your key" />
+                    </div>
+                    <div class="assistant-actions">
+                      <button type="button" class="btn-ghost" id="assistantGeminiCheck">Check key</button>
+                      <button type="button" class="btn-ghost" id="assistantGeminiClear">Remove</button>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="card static">
@@ -347,23 +410,23 @@
 
           <nav class="tab-bar" aria-label="Main">
             <button type="button" class="tab active" data-tab="home">
-              <span class="tab-glyph" aria-hidden="true"><img src="assets/tabs/home.jpg" alt="" /></span>
+              <span class="tab-glyph" aria-hidden="true"><img class="tab-fallback" src="assets/tabs/home.jpg" alt="" /><canvas class="tab-pack" data-job="home" width="144" height="144"></canvas></span>
               <span>Home</span>
             </button>
             <button type="button" class="tab" data-tab="gyms">
-              <span class="tab-glyph" aria-hidden="true"><img src="assets/tabs/gyms.jpg" alt="" /></span>
+              <span class="tab-glyph" aria-hidden="true"><img class="tab-fallback" src="assets/tabs/gyms.jpg" alt="" /><canvas class="tab-pack" data-job="gyms" width="144" height="144"></canvas></span>
               <span>Gyms</span>
             </button>
             <button type="button" class="tab" data-tab="partners">
-              <span class="tab-glyph" aria-hidden="true"><img src="assets/tabs/partners.jpg" alt="" /></span>
+              <span class="tab-glyph" aria-hidden="true"><img class="tab-fallback" src="assets/tabs/partners.jpg" alt="" /><canvas class="tab-pack" data-job="partners" width="144" height="144"></canvas></span>
               <span>Partners</span>
             </button>
             <button type="button" class="tab" data-tab="feed">
-              <span class="tab-glyph" aria-hidden="true"><img src="assets/tabs/feed.jpg" alt="" /></span>
+              <span class="tab-glyph" aria-hidden="true"><img class="tab-fallback" src="assets/tabs/feed.jpg" alt="" /><canvas class="tab-pack" data-job="feed" width="144" height="144"></canvas></span>
               <span>Feed</span>
             </button>
             <button type="button" class="tab" data-tab="profile">
-              <span class="tab-glyph" aria-hidden="true"><img src="assets/tabs/profile.jpg" alt="" /></span>
+              <span class="tab-glyph" aria-hidden="true"><img class="tab-fallback" src="assets/tabs/profile.jpg" alt="" /><canvas class="tab-pack" data-job="profile" width="144" height="144"></canvas></span>
               <span>Profile</span>
             </button>
           </nav>
@@ -374,6 +437,9 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="config.js" onerror="/* optional */"></script>
+  <script src="config.public.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+  <script src="supabase-client.js"></script>
   <script src="mobile-shell.js"></script>
   <script src="update-check.js"></script>
   <script src="beta.js"></script>
@@ -381,6 +447,13 @@
   <script src="reviews.js"></script>
   <script src="places-live.js"></script>
   <script src="nix-client.js"></script>
+  <script src="toast.js"></script>
+  <script src="board.js"></script>
+  <script src="share.js"></script>
+  <script src="passport.js"></script>
+  <script src="family.js"></script>
+  <script src="pack-renderer.js"></script>
+  <script src="assistant.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

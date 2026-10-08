@@ -13,6 +13,7 @@ const state = {
   profilePanel: "main",
   agePool: "adult",
   openToTrain: true,
+  showHere: true,
   checkedInGym: null,
   sportQuery: "",
   /** demo: "guest" = no sports on profile; "athlete" = multi-sport profile */
@@ -39,7 +40,7 @@ const PROFILE_KEY = "rollphase.profile.v1";
 const SETTINGS_KEY = "rollphase.settings.v1";
 
 function defaultSettings() {
-  return { text: "md", haptics: true, googlePlacesApiKey: "" };
+  return { text: "md", haptics: true, googlePlacesApiKey: "", iconPack: "fight", iconHue: 43, iconVis: 46 };
 }
 
 function loadSettings() {
@@ -53,6 +54,7 @@ function loadSettings() {
 function applySettings(s) {
   const text = s?.text === "sm" || s?.text === "lg" ? s.text : "md";
   document.documentElement.dataset.text = text;
+  if (window.IconPacks) IconPacks.apply(s);
 }
 
 function saveSettings(partial) {
@@ -91,6 +93,8 @@ function loadPersisted() {
       state.profile.displayName = "";
     }
     if (saved.agePool === "teen" || saved.agePool === "adult") state.agePool = saved.agePool;
+    if (typeof saved.openToTrain === "boolean") state.openToTrain = saved.openToTrain;
+    if (typeof saved.showHere === "boolean") state.showHere = saved.showHere;
     if (saved.focusSport) state.sport = saved.focusSport;
   } catch {
     /* ignore bad storage */
@@ -103,6 +107,8 @@ function savePersisted() {
     const snap = {
       ...state.profile,
       agePool: state.agePool,
+      openToTrain: state.openToTrain,
+      showHere: state.showHere,
       focusSport: state.sport || null,
     };
     delete snap.googlePlacesApiKey;
@@ -110,7 +116,14 @@ function savePersisted() {
   } catch {
     /* quota: drop the photo and try once */
     try {
-      const slim = { ...state.profile, photoDataUrl: null, agePool: state.agePool, focusSport: state.sport || null };
+      const slim = {
+        ...state.profile,
+        photoDataUrl: null,
+        agePool: state.agePool,
+        openToTrain: state.openToTrain,
+        showHere: state.showHere,
+        focusSport: state.sport || null,
+      };
       if (slim.represent) slim.represent = { ...slim.represent, logoDataUrl: null };
       localStorage.setItem(PROFILE_KEY, JSON.stringify(slim));
     } catch {
@@ -124,6 +137,12 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(savePersisted, 250);
 }
+window.addEventListener("pagehide", () => {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  savePersisted();
+});
 
 function emptyProfile() {
   return {
@@ -285,14 +304,15 @@ function eventSearchLink(sport) {
 
 function calendarHTML(sport) {
   const s = sport || sportMeta(focusId());
+  if (!s) return "";
   const links = [];
   const local = eventSearchLink(s);
   if (local) links.push(local);
-  if (s?.calendar?.href && s.calendar.href !== local?.href) links.push(s.calendar);
+  if (s.calendar?.href && s.calendar.href !== local?.href) links.push(s.calendar);
   return links
     .map(
       (link) =>
-        `<a class="calendar-out" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(link.label)}</span><span aria-hidden="true">↗</span></a>`
+        `<div class="calendar-row"><a class="calendar-out" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(link.label)}</span><span aria-hidden="true">↗</span></a><button type="button" class="calendar-share" data-share-cal="${escapeHtml(link.href)}" data-share-sport="${escapeHtml(s.id)}" data-share-label="${escapeHtml(link.label)}">Share</button></div>`
     )
     .join("");
 }
@@ -461,7 +481,6 @@ function applySkin(sportId, { flash = true } = {}) {
       state.gymFilter = "all";
       state.rankFilter = "all";
       renderGymFilters();
-      renderPartnerFilters();
       $$(".skin-swatch").forEach((sw) => {
         sw.style.outline = "none";
       });
@@ -499,7 +518,6 @@ function applySkin(sportId, { flash = true } = {}) {
     state.gymFilter = "all";
     state.rankFilter = "all";
     renderGymFilters();
-    renderPartnerFilters();
 
     if (flash) {
       $(".skin-flash")?.remove();
@@ -605,28 +623,34 @@ function renderGymFilters() {
     .join("");
 }
 
-function renderPartnerFilters() {
-  const el = $("#partnerFilters");
-  if (!el) return;
-  const s = sportMeta(focusId());
-  const filters = s?.partnerFilters || [
-    { id: "all", label: "All levels" },
-    { id: "near", label: "≤ 3 mi" },
-  ];
-  el.innerHTML = filters
-    .map(
-      (f) =>
-        `<button type="button" class="pill ${state.rankFilter === f.id ? "active" : ""}" data-rank="${f.id}">${escapeHtml(f.label)}</button>`
-    )
-    .join("");
-}
-
 function allLivePlaces() {
   return state.live.places || [];
 }
 
 function findGym(id) {
   return allLivePlaces().find((x) => x.id === id) || null;
+}
+
+/** A shared link carries the gym's name, so the board opens before this phone has searched. */
+function gymFromShare(id) {
+  const found = findGym(id);
+  if (found) return found;
+  const arrival = window.RollShare?.readArrival?.();
+  if (!arrival?.name || String(arrival.gymId || "") !== String(id)) return null;
+  const lat = Number(arrival.lat);
+  const lng = Number(arrival.lng);
+  return {
+    id: String(id),
+    name: arrival.name,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    sports: arrival.sport ? [arrival.sport] : [],
+    address: "",
+    tags: {},
+    here: {},
+    hours: "",
+    open: null,
+  };
 }
 
 /**
@@ -748,68 +772,6 @@ function renderLiveMap(list) {
 }
 
 /**
- * Read a place's own website for a labeled phone and posted hours.
- * Silent if the local reader is not running. Never invents a number.
- */
-async function enrichLivePlaces() {
-  const focus = focusId();
-  const places = [...(state.live.places || [])].sort((a, b) => {
-    const as = focus && (a.sports || []).includes(focus) ? 0 : 1;
-    const bs = focus && (b.sports || []).includes(focus) ? 0 : 1;
-    if (as !== bs) return as - bs;
-    return (a.mi || 99) - (b.mi || 99);
-  });
-  const urls = [];
-  for (const p of places) {
-    if (!p.website || !/^https?:\/\//i.test(p.website)) continue;
-    if (p.phone && p.hours) continue;
-    urls.push(p.website);
-    if (urls.length >= 4) break;
-  }
-  if (!urls.length) return;
-  let data;
-  try {
-    const res = await fetch("http://127.0.0.1:8877/enrich", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-    });
-    if (!res.ok) return;
-    data = await res.json();
-  } catch {
-    return;
-  }
-  const by = new Map();
-  for (const row of data.results || []) {
-    if (row?.url) by.set(row.url, row);
-  }
-  let changed = false;
-  for (const p of places) {
-    const hit = by.get(p.website);
-    if (!hit) continue;
-    if (hit.phone && !p.phone) {
-      p.phone = hit.phone;
-      changed = true;
-    }
-    if (hit.hours && !p.hours) {
-      p.hours = hit.hours;
-      changed = true;
-    }
-    const known =
-      hit.open === true || hit.open === false
-        ? hit.open
-        : typeof PlacesLive !== "undefined" && p.hours
-          ? PlacesLive.openFromHours(p.hours)
-          : null;
-    if (known === true || known === false) {
-      p.open = known;
-      changed = true;
-    }
-  }
-  if (changed) safeRenderAll();
-}
-
-/**
  * Load real venues near the user. Fake GYMS are never used.
  */
 async function loadLivePlaces(opts = {}) {
@@ -917,7 +879,6 @@ async function loadLivePlaces(opts = {}) {
     state.live.sources = sources || [provider];
     state.live.lastSport = sport;
     state.live.lastFetchedAt = Date.now();
-    enrichLivePlaces();
     if (!places.length) {
       state.live.error =
         "No venues found in this radius — try a wider city search.";
@@ -1292,9 +1253,31 @@ function renderHomeWelcome() {
   }
 }
 
+function paintTrainToggle() {
+  const train = $("#toggleTrain");
+  if (train) train.textContent = state.openToTrain ? "Open to train · On" : "Open to train · Off";
+  const box = $("#privOpenTrain");
+  if (box) box.checked = state.openToTrain !== false;
+  const here = $("#privShowHere");
+  if (here) here.checked = state.showHere !== false;
+}
+
+function setOpenToTrain(on) {
+  state.openToTrain = !!on;
+  paintTrainToggle();
+  savePersisted();
+}
+
+function setShowHere(on) {
+  state.showHere = !!on;
+  paintTrainToggle();
+  savePersisted();
+}
+
 function renderHome() {
   const sport = focusId();
   const s = sportMeta(sport);
+  paintTrainToggle();
 
   renderHomeWelcome();
   renderHomeSportRail();
@@ -1457,6 +1440,24 @@ function renderGyms() {
     return;
   }
 
+  if (!list.length && gymsForSport().length && state.gymFilter !== "all" && !state.live.loading) {
+    if (mapMode && typeof L !== "undefined") {
+      if (!document.getElementById("liveMap")) {
+        mapEl.innerHTML = `<div id="liveMap" class="live-map" role="application" aria-label="Venue map"></div>`;
+      }
+      renderLiveMap([]);
+    }
+    listEl.innerHTML =
+      empty("Nothing matched that filter", "These places do not list it.") +
+      `<button type="button" class="btn-primary" id="clearGymFilter" style="margin-top:12px">Show all places</button>`;
+    $("#clearGymFilter")?.addEventListener("click", () => {
+      state.gymFilter = "all";
+      renderGymFilters();
+      renderGyms();
+    });
+    return;
+  }
+
   if (mapMode && typeof L !== "undefined") {
     if (!document.getElementById("liveMap")) {
       mapEl.innerHTML = `<div id="liveMap" class="live-map" role="application" aria-label="Venue map"></div>`;
@@ -1561,7 +1562,7 @@ function renderReviewsPanel(gymId, sport) {
   return `
     ${summary}
     <button type="button" class="btn-primary" id="writeReviewBtn">Rate this venue</button>
-    <p class="muted small" style="margin:8px 0 12px">${
+    <p class="muted small" id="visitTip" style="margin:8px 0 12px">${
       verified
         ? "You’ve checked in here — your review can be visit-verified."
         : "Tip: check in when you train so reviews carry a visit badge (higher trust)."
@@ -1574,9 +1575,27 @@ function renderReviewsPanel(gymId, sport) {
     <div class="ext-links">
       <a href="${escapeHtml((findGym(gymId)?.mapsUrl) || mapsSearchUrl(findGym(gymId)?.name || ""))}" target="_blank" rel="noopener">Open in Google Maps</a>
       ${findGym(gymId)?.website ? `<a href="${escapeHtml(findGym(gymId).website)}" target="_blank" rel="noopener">Venue website</a>` : ""}
-      <button type="button" class="linkish" id="copyVenueShare">Copy share link for non-app friends</button>
     </div>
   `;
+}
+
+// The reviews panel's initial "check in for a visit badge" tip renders from the old local-only
+// hasVisit() (never populated anymore — the check-in button that fed it is gone). Once the real
+// checkins table answers, patch the tip in place rather than re-rendering the whole panel.
+let visitTipToken = 0;
+async function refreshVisitTip(gymId) {
+  const token = ++visitTipToken;
+  if (typeof RP === "undefined" || !RP.db) return;
+  try {
+    const me = await RP.user();
+    if (!me) return;
+    const { data } = await RP.db.from("checkins").select("id").eq("gym_id", gymId).eq("user_id", me.id).limit(1);
+    if (token !== visitTipToken || !data?.length) return;
+    const tip = $("#visitTip");
+    if (tip) tip.textContent = "You’ve checked in here — your review can be visit-verified.";
+  } catch (e) {
+    console.warn("refreshVisitTip failed", e);
+  }
 }
 
 function bindRateForm(gymId, sport) {
@@ -1639,9 +1658,23 @@ function bindRateForm(gymId, sport) {
       });
     });
 
-    $("#rateSubmit")?.addEventListener("click", () => {
+    $("#rateSubmit")?.addEventListener("click", async () => {
       const author = state.profile.displayName || "You";
-      const verified = RS.hasVisit(gymId, sport);
+      // "Visit verified" is a real, checked claim on the review from here on — a checkins row for
+      // this gym and user, not the old localStorage-only hasVisit() (easy to spoof, never checked
+      // against anything real).
+      let verified = false;
+      if (typeof RP !== "undefined" && RP.db) {
+        try {
+          const me = await RP.user();
+          if (me) {
+            const { data } = await RP.db.from("checkins").select("id").eq("gym_id", gymId).eq("user_id", me.id).limit(1);
+            verified = !!data?.length;
+          }
+        } catch (e) {
+          console.warn("verified-visit check failed", e);
+        }
+      }
       RS.upsertUserReview({
         id: `ur_${Date.now()}`,
         gymId,
@@ -1658,22 +1691,11 @@ function bindRateForm(gymId, sport) {
     });
   });
 
-  $("#copyVenueShare")?.addEventListener("click", () => {
-    const g = findGym(gymId);
-    const agg = RS.aggregateRating(gymId, sport);
-    const line = `${g?.name || "Venue"} on RollPhase${agg ? ` · ${agg.overall}★ (${agg.count} athlete reviews)` : ""}${g?.website ? ` · ${g.website}` : ""} — ${location.origin}${location.pathname}#gym=${gymId}`;
-    try {
-      navigator.clipboard?.writeText(line);
-      alert("Copied share blurb for friends (app or not).");
-    } catch {
-      prompt("Copy this:", line);
-    }
-  });
 }
 
 function openGymDetail(id, opts = {}) {
   if (!opts.historyMode) opts.historyMode = "push";
-  const g = findGym(id);
+  const g = findGym(id) || gymFromShare(id);
   if (!g) return;
   const sports = g.sports || [];
   const sport = focusId() && sports.includes(focusId()) ? focusId() : sports[0];
@@ -1710,6 +1732,7 @@ function openGymDetail(id, opts = {}) {
         ${g.phone ? '<span class="tag-pill">Phone</span>' : ""}
         ${g.website ? '<span class="tag-pill">Website</span>' : ""}
       </div>
+      <button type="button" class="btn-primary share-block-btn" id="shareGymBtn">Share this gym</button>
     </div>
     <div class="detail-tabs">
       <button type="button" class="detail-tab active" data-panel="overview">Overview</button>
@@ -1739,10 +1762,15 @@ function openGymDetail(id, opts = {}) {
           : ""
       }
       ${contactLinksHTML(g)}
-      <button type="button" class="btn-primary" id="checkInHere" style="margin-top:12px">Check in${s ? ` · ${escapeHtml(s.short)}` : ""}</button>
       <button type="button" class="btn-ghost" id="savePlace" style="width:100%;margin-top:8px;padding:12px">${isFavorite(g.id) ? "✓ Saved place" : "Save place · stay in the loop"}</button>
       <button type="button" class="btn-ghost" id="followGym" style="width:100%;margin-top:8px;padding:12px">Follow for updates</button>
       <button type="button" class="btn-ghost" id="jumpReviews" style="width:100%;margin-top:8px;padding:12px">See athlete reviews</button>
+      ${
+        typeof RollAssistant !== "undefined" && RollAssistant.usesGemini()
+          ? `<button type="button" class="btn-ghost" id="askPlaceBtn" style="width:100%;margin-top:8px;padding:12px">Ask about this place</button>
+             <p class="muted small" id="askPlaceAnswer" style="margin-top:8px"></p>`
+          : ""
+      }
       ${
         sport && !profileSports().some((ps) => ps.id === sport)
           ? `<button type="button" class="btn-ghost" id="addSportFromGym" style="width:100%;margin-top:8px;padding:12px">Add ${escapeHtml(s?.short || "sport")} to my profile</button>`
@@ -1802,15 +1830,39 @@ function openGymDetail(id, opts = {}) {
     });
   });
   bindRateForm(g.id, sport);
+  refreshVisitTip(g.id);
+  $("#shareGymBtn")?.addEventListener("click", () => {
+    if (typeof window.RollShare?.open !== "function") return;
+    window.RollShare.open({
+      headline: "Share this gym",
+      title: g.name,
+      text: `Who's training at ${g.name}`,
+      note: "Scan it. The phone installs Rollphase if needed, then opens this gym.",
+      url: window.RollShare.gymUrl(g),
+      poster: true,
+    });
+  });
   $("#jumpReviews")?.addEventListener("click", () => {
     document.querySelector('.detail-tab[data-panel="reviews"]')?.click();
   });
-  $("#checkInHere")?.addEventListener("click", () => {
-    buzz(20);
-    state.checkedInGym = g.id;
-    if (sport) applySkin(sport, { flash: false });
-    if (typeof ReviewSystem !== "undefined") ReviewSystem.recordVisit(g.id, sport);
-    switchTab("home", { historyMode: "push" });
+  $("#askPlaceBtn")?.addEventListener("click", async () => {
+    const el = $("#askPlaceAnswer");
+    if (el) el.textContent = "Asking with your key…";
+    try {
+      const text = await RollAssistant.askPlace({
+        name: g.name,
+        address: g.address || "",
+        miles: g.mi,
+        sport: s?.name || sport || "",
+        hours: hoursDisplay,
+        phone: g.phone || "",
+        website: g.website || "",
+        open: openLabel,
+      });
+      if (el) el.textContent = text;
+    } catch (err) {
+      if (el) el.textContent = err.message || "Gemini did not answer.";
+    }
   });
   $("#savePlace")?.addEventListener("click", (e) => {
     toggleFavorite(g);
@@ -1828,56 +1880,19 @@ function openGymDetail(id, opts = {}) {
     if (sport) addSportToProfile(sport, "—");
     switchTab("profile", { historyMode: "push" });
   });
+  window.MatBoard?.mount(g);
 }
 
+// Interim, honest state: real partner matching is Match (LEVELS-AND-MATCH.md section 2),
+// not built yet. Rather than a fake matched-partner list, point at where real people already are.
 function renderPartners() {
-  const s = sportMeta(focusId());
-  if ($("#agePoolBadge")) {
-    $("#agePoolBadge").textContent = state.agePool === "teen" ? "Youth pool 16–17" : "Adult pool";
-  }
-  if ($("#partnerHint")) {
-    $("#partnerHint").textContent =
-      state.agePool === "teen"
-        ? `Youth only${s ? ` · ${s.short}` : ""}`
-        : s
-          ? `${s.vibe} · same sport · level · nearby`
-          : "All sports · open to train · nearby — pick a focus to narrow";
-  }
-
-  const list = partnersForSport();
   const el = $("#partnerList");
   if (!el) return;
-  el.innerHTML = list.length
-    ? list
-        .map(
-          (p) => `
-    <article class="partner-card">
-      <div class="top">
-        <div class="av">${initials(p.name)}</div>
-        <div>
-          <div class="name">${escapeHtml(p.name)}${p.age === "teen" ? " · Youth" : ""}</div>
-          <div class="sub">${escapeHtml(sportMeta(p.sport)?.short || "")} · ${escapeHtml(p.level)} · ${p.mi} mi · ${escapeHtml(p.intent)}</div>
-        </div>
-      </div>
-      <div class="partner-actions">
-        <button type="button" class="btn-match" data-match="${p.id}">Request train</button>
-        <button type="button" class="btn-sec">Profile</button>
-      </div>
-    </article>`
-        )
-        .join("")
-    : sportMarkHTML() +
-      empty(
-        "No partners nearby yet",
-        "When athletes nearby open to train, they’ll show up here."
-      );
-
-  $$("[data-match]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      btn.textContent = "Requested ✓";
-      btn.disabled = true;
-    });
-  });
+  el.innerHTML =
+    sportMarkHTML() +
+    empty("Who's training is on each gym's board.", "Open a gym to see who's here now and tap in.") +
+    `<button type="button" class="btn-match" id="partnersToGyms" style="width:100%;margin-top:10px">Go to Gyms</button>`;
+  $("#partnersToGyms")?.addEventListener("click", () => switchTab("gyms"));
 }
 
 function forYouFeedItems() {
@@ -1990,6 +2005,65 @@ function forYouSocialCard(p, badge) {
     </article>`;
 }
 
+let feedLiveToken = 0;
+
+// Feed › Live: the user's own real check-in, plus real Here-now counts for saved gyms — no mock
+// "live" events. A stale response (feedMode changed, or a newer call already landed) is dropped.
+async function renderFeedLive(body) {
+  const token = ++feedLiveToken;
+  const fallback = () => empty("Nothing live right now", "Sessions appear here when athletes check in.");
+  if (typeof RP === "undefined" || !RP.db) {
+    body.innerHTML = fallback();
+    return;
+  }
+  try {
+    const me = await RP.user();
+    const favorites = ensureFavorites();
+    const gymIds = [...new Set(favorites.map((f) => f.gymId))];
+    const now = new Date().toISOString();
+    const [{ data: myCheckins }, { data: favCheckins }] = await Promise.all([
+      me
+        ? RP.db.from("checkins").select("gym_id").eq("user_id", me.id).gt("expires_at", now).limit(1)
+        : Promise.resolve({ data: [] }),
+      gymIds.length
+        ? RP.db.from("checkins").select("gym_id").in("gym_id", gymIds).gt("expires_at", now)
+        : Promise.resolve({ data: [] }),
+    ]);
+    if (token !== feedLiveToken || state.feedMode !== "live") return;
+
+    const countByGym = new Map();
+    for (const c of favCheckins || []) countByGym.set(c.gym_id, (countByGym.get(c.gym_id) || 0) + 1);
+    const myGymId = myCheckins?.[0]?.gym_id || null;
+
+    const cards = [];
+    if (myGymId) {
+      const g = findGym(myGymId);
+      cards.push(`<article class="feed-card live-card" data-gym="${escapeHtml(myGymId)}">
+        <div class="feed-top"><div>
+          <div class="feed-kind"><span class="live-dot"></span>You're checked in</div>
+          <div class="card-title" style="margin-top:4px">${escapeHtml(g?.name || "This gym")}</div>
+        </div></div>
+      </article>`);
+    }
+    for (const f of favorites) {
+      if (f.gymId === myGymId) continue; // already shown above
+      const count = countByGym.get(f.gymId) || 0;
+      if (!count) continue;
+      cards.push(`<article class="feed-card" data-gym="${escapeHtml(f.gymId)}">
+        <div class="feed-top"><div>
+          <div class="feed-kind"><span class="live-dot"></span>Here now</div>
+          <div class="card-title" style="margin-top:4px">${escapeHtml(f.name)}</div>
+          <div class="card-meta">${count} checked in</div>
+        </div></div>
+      </article>`);
+    }
+    body.innerHTML = cards.length ? cards.join("") : fallback();
+  } catch (e) {
+    console.warn("renderFeedLive failed", e);
+    if (token === feedLiveToken) body.innerHTML = fallback();
+  }
+}
+
 function renderFeed() {
   const primary = primarySportId();
   const s = sportMeta(focusId() || primary);
@@ -2028,10 +2102,8 @@ function renderFeed() {
         empty("No events listed here yet", "The official calendar is the accurate place to look.") +
         calendarHTML(s);
   } else if (state.feedMode === "live") {
-    const list = eventsForSport({ liveOnly: true });
-    body.innerHTML = list.length
-      ? list.map(eventCardHTML).join("")
-      : empty("Nothing live right now", "Sessions appear here when athletes check in.");
+    body.innerHTML = `<p class="muted small">Loading…</p>`;
+    renderFeedLive(body);
   } else {
     const list = socialForSport();
     body.innerHTML = list.length
@@ -2091,7 +2163,7 @@ function renderGear() {
         </article>`
             )
             .join("")
-        : empty("No needs", "Post a want/have for this sport.");
+        : empty("No needs yet", "Wants and offers for this sport show up here when athletes post them.");
     }
   }
 }
@@ -2518,11 +2590,13 @@ function openProfileSettings(opts = {}) {
     notifyHost.querySelectorAll("[data-notify-pref]").forEach((input) => {
       input.addEventListener("change", () => {
         ensureNotify()[input.dataset.notifyPref] = input.checked;
+        scheduleSave();
       });
     });
   }
   if (historyMode === "push") pushNav({ view: "settings", tab: "profile" });
   else if (historyMode === "replace") replaceNav({ view: "settings", tab: "profile" });
+  bindPhoneSettings();
   $("#profileSettings")?.scrollTo?.(0, 0);
   const screen = $("#screen-profile");
   if (screen) screen.scrollTop = 0;
@@ -2592,6 +2666,119 @@ function bindPhoneSettings() {
       if (hap.checked) buzz(16);
     });
   }
+  bindIconPack(settings);
+  paintTrainToggle();
+  if (window.RollAssistant) RollAssistant.bind();
+  const trainBox = $("#privOpenTrain");
+  const hereBox = $("#privShowHere");
+  if (trainBox && trainBox.dataset.bound !== "1") {
+    trainBox.dataset.bound = "1";
+    trainBox.addEventListener("change", () => setOpenToTrain(trainBox.checked));
+  }
+  if (hereBox && hereBox.dataset.bound !== "1") {
+    hereBox.dataset.bound = "1";
+    hereBox.addEventListener("change", () => setShowHere(hereBox.checked));
+  }
+}
+
+const ICON_HUE_JUMPS = [
+  ["Gold", 43], ["Crimson", 4], ["Orange", 24], ["Lime", 92],
+  ["Emerald", 142], ["Cyan", 178], ["Royal", 218], ["Violet", 278], ["Magenta", 322]
+];
+
+function bindIconPack(settings) {
+  const picks = $("#iconPackPicks");
+  const hue = $("#iconHue");
+  const vis = $("#iconVis");
+  if (!picks || !hue || !vis || !window.IconPacks) return;
+  const current = IconPacks.read(settings);
+  if (picks.dataset.bound !== "1") {
+    picks.dataset.bound = "1";
+    IconPacks.PACKS.forEach((p) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "seg-btn";
+      btn.dataset.pack = p.id;
+      btn.textContent = p.name;
+      picks.appendChild(btn);
+    });
+    picks.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-pack]");
+      if (!btn) return;
+      buzz(8);
+      saveSettings({ iconPack: btn.dataset.pack });
+      syncIconPackControls(loadSettings());
+    });
+    const jumps = $("#iconHueJumps");
+    ICON_HUE_JUMPS.forEach(([name, deg]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.hue = String(deg);
+      btn.textContent = name;
+      jumps.appendChild(btn);
+    });
+    jumps.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-hue]");
+      if (!btn) return;
+      buzz(8);
+      saveSettings({ iconHue: Number(btn.dataset.hue) });
+      syncIconPackControls(loadSettings());
+    });
+    hue.addEventListener("input", () => {
+      saveSettings({ iconHue: Number(hue.value) });
+      syncIconPackControls(loadSettings());
+    });
+    vis.addEventListener("input", () => {
+      saveSettings({ iconVis: Number(vis.value) });
+      syncIconPackControls(loadSettings());
+    });
+  }
+  syncIconPackControls(current);
+}
+
+function syncIconPackControls(settings) {
+  const current = window.IconPacks ? IconPacks.read(settings) : settings;
+  $$("#iconPackPicks .seg-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.pack === current.iconPack || btn.dataset.pack === current.pack);
+  });
+  const hue = $("#iconHue");
+  const vis = $("#iconVis");
+  const hueValue = current.hue ?? current.iconHue;
+  const visValue = current.vis ?? current.iconVis;
+  if (hue && document.activeElement !== hue) hue.value = String(hueValue);
+  if (vis && document.activeElement !== vis) vis.value = String(visValue);
+  const near = ICON_HUE_JUMPS.find((j) => Math.abs(j[1] - hueValue) <= 3);
+  const hueLabel = $("#iconHueLabel");
+  const visLabel = $("#iconVisLabel");
+  if (hueLabel) hueLabel.textContent = near ? hueValue + "° " + near[0] : hueValue + "°";
+  if (visLabel) visLabel.textContent = String(visValue);
+  $$("#iconHueJumps button").forEach((btn) => {
+    btn.classList.toggle("on", near && btn.textContent === near[0]);
+  });
+}
+
+function paintAppShare() {
+  if (typeof window.RollShare?.paint !== "function") return;
+  const canvas = $("#shareAppQr");
+  const url = window.RollShare.appUrl();
+  if (canvas && canvas.dataset.url !== url) {
+    canvas.dataset.url = url;
+    window.RollShare.paint(canvas, url);
+  }
+  const btn = $("#shareAppBtn");
+  if (btn && btn.dataset.bound !== "1") {
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      window.RollShare.open({
+        headline: "Share Rollphase",
+        title: "Rollphase",
+        text: "Train near you.",
+        note: "Scan it. The phone installs Rollphase if needed, then opens the app.",
+        url: window.RollShare.appUrl(),
+        poster: false,
+      });
+    });
+  }
 }
 
 function renderProfile() {
@@ -2649,6 +2836,7 @@ function renderProfile() {
     );
   }
   bindPhoneSettings();
+  paintAppShare();
 
   const sportsHost = $("#profileSports");
   if (sportsHost) {
@@ -2686,6 +2874,7 @@ function renderProfile() {
       btn.addEventListener("click", () => setPrimarySport(btn.dataset.primarySport));
     });
     $("#profileAddSport")?.addEventListener("click", () => openSportPicker({ addMode: true }));
+    window.Passport?.mount(sportsHost.closest(".card"));
   }
 
   const placesHost = $("#myPlaces");
@@ -2724,6 +2913,7 @@ function renderProfile() {
         renderProfile();
       });
     });
+    window.Family?.mount(placesHost.closest(".card"));
   }
 
   // Main profile: summary only. Full color studio only in Settings.
@@ -2776,7 +2966,7 @@ function renderProfile() {
         ([key, label]) => `
       <div class="social-field">
         <label>${label}</label>
-        <input type="text" data-social="${key}" value="${escapeHtml(p.social[key] || "")}" placeholder="@handle or URL" />
+        <input type="text" data-social="${key}" value="${escapeHtml(state.profile.social[key] || "")}" placeholder="@handle or URL" />
       </div>`
       )
       .join("");
@@ -2789,8 +2979,8 @@ function renderProfile() {
 
   const followHost = $("#followingList");
   if (followHost) {
-    followHost.innerHTML = p.following.length
-      ? p.following
+    followHost.innerHTML = state.profile.following.length
+      ? state.profile.following
           .map(
             (f, i) => `
       <span class="follow-chip">
@@ -2893,7 +3083,10 @@ function navUrl(entry) {
 }
 
 function parseLocationToEntry() {
-  const raw = (location.hash || "").replace(/^#/, "");
+  // A share/poster link is #/gym/<id>?src=share|poster — strip that query suffix before it's
+  // ever used as a gymId, or every id it's attached to fails to match (found via the Mat Board's
+  // own share links: scanning the printed QR silently landed on Home instead of the board).
+  const raw = (location.hash || "").replace(/^#/, "").split("?")[0];
   if (!raw || raw === "/" || raw === "") return { view: "tab", tab: "home" };
   const path = raw.startsWith("/") ? raw.slice(1) : raw;
   if (path.startsWith("gym/")) {
@@ -3006,6 +3199,7 @@ function switchTab(tab, opts = {}) {
       /* ignore */
     }
   }
+  window.RollShare?.mountArrival?.();
 }
 
 /**
@@ -3025,6 +3219,7 @@ function applyNavEntry(entry, { isPop = false } = {}) {
             openGymDetail(entry.gymId, { historyMode: "none" });
           } finally {
             state._navSilent = false;
+            window.RollShare?.mountArrival?.();
           }
         });
       } else {
@@ -3062,6 +3257,7 @@ function applyNavEntry(entry, { isPop = false } = {}) {
     switchTab(entry.tab || "home", { historyMode: "none" });
   } finally {
     state._navSilent = false;
+    window.RollShare?.mountArrival?.();
   }
 }
 
@@ -3223,6 +3419,23 @@ function bind() {
       openGymDetail(card.dataset.gym, { historyMode: "push" });
     }
 
+    const calShare = e.target.closest("[data-share-cal]");
+    if (calShare && typeof window.RollShare?.open === "function") {
+      e.preventDefault();
+      const sportId = calShare.dataset.shareSport;
+      const label = calShare.dataset.shareLabel || "Calendar";
+      const sport = sportMeta(sportId);
+      window.RollShare.open({
+        headline: "Share this calendar",
+        title: label,
+        text: sport ? `${sport.short} · ${label}` : label,
+        note: "Scan it. The phone installs Rollphase if needed, then opens this calendar.",
+        url: window.RollShare.calendarUrl(sportId, calShare.dataset.shareCal),
+        poster: false,
+      });
+      return;
+    }
+
     const nbtn = e.target.closest("[data-notify]");
     if (nbtn && (state.tab === "home" || state.tab === "feed")) {
       const id = nbtn.dataset.notify;
@@ -3274,14 +3487,6 @@ function bind() {
     renderGyms();
   });
 
-  $("#partnerFilters")?.addEventListener("click", (e) => {
-    const pill = e.target.closest("[data-rank]");
-    if (!pill) return;
-    state.rankFilter = pill.dataset.rank;
-    renderPartnerFilters();
-    renderPartners();
-  });
-
   $("#feedSeg")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-feed]");
     if (!btn) return;
@@ -3308,10 +3513,7 @@ function bind() {
   });
 
   $("#toggleTrain")?.addEventListener("click", () => {
-    state.openToTrain = !state.openToTrain;
-    if ($("#toggleTrain")) {
-      $("#toggleTrain").textContent = state.openToTrain ? "Open to train · On" : "Open to train · Off";
-    }
+    setOpenToTrain(!state.openToTrain);
   });
 
   const tick = () => {
@@ -3328,6 +3530,7 @@ function bind() {
   try {
     loadPersisted();
     applySettings(loadSettings());
+    paintTrainToggle();
     // Emphasize first-choice sport when profile has one (still optional to clear)
     if (state.sport) {
       /* kept from this phone */
@@ -3349,6 +3552,9 @@ function bind() {
         state.live.fromCache = true;
       }
     }
+
+    const shared = window.RollShare?.readArrival?.();
+    if (shared?.sport && SPORTS.some((s) => s.id === shared.sport)) state.sport = shared.sport;
 
     renderStageSwatches();
     applySkin(state.sport, { flash: false });

@@ -1,6 +1,6 @@
 {
-  "version": "0.6.6",
-  "buildId": "20260924-1309-88d9bc5",
-  "builtAt": "2026-09-24T13:09:06.770Z",
-  "message": "Header no longer covers the name"
+  "version": "0.7.0",
+  "buildId": "20261008-1839-50fb2bb",
+  "builtAt": "2026-10-08T18:40:00.144Z",
+  "message": "Share Rollphase from your profile. Connect Muse or Gemini in Settings."
 }

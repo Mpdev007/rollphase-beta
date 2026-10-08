@@ -1,0 +1,157 @@
+/* The printable poster: gym name, a scan-me QR, the week's mat times, a small RollPhase mark.
+ * Triggered by "Print poster" in the share sheet (adds .poster to <body>, calls window.print()). */
+@media print {
+  /* The mobile app shell pins <html>/<body> to position:fixed, overflow:hidden, height:100dvh
+   * (skins.css) so the app behaves like a native screen with no page scroll — correct on screen,
+   * but it clips everything below the first viewport-height of content when printing, and a
+   * poster (a QR block plus a whole week's schedule) is almost always taller than one screen.
+   * Undo it for print only, so the page can grow to fit the real content. */
+  html.rp-mobile,
+  html.rp-mobile body,
+  body.poster {
+    position: static !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body.poster * {
+    visibility: hidden;
+  }
+  body.poster #matBoard,
+  body.poster #matBoard *,
+  body.poster #shareOverlay,
+  body.poster #shareOverlay .sheet,
+  body.poster #shareOverlay #shareTitle,
+  body.poster #shareOverlay .sheet-sub,
+  body.poster #shareOverlay #shareQrCanvas {
+    visibility: visible;
+  }
+
+  body.poster {
+    background: #fff;
+  }
+
+  /* Everything in the app chrome and the rest of the share sheet's own buttons stays hidden. */
+  body.poster .tab-bar,
+  body.poster .stage-note,
+  body.poster #rollToast,
+  body.poster #shareNativeBtn,
+  body.poster #shareCopyBtn,
+  body.poster #shareSaveQrBtn,
+  body.poster #sharePrintBtn,
+  body.poster #shareCloseBtn,
+  body.poster .sheet-handle,
+  body.poster .mb-header button,
+  body.poster .mb-share-session,
+  body.poster .mb-here,
+  body.poster .mb-add-btn,
+  body.poster .mb-slot-conf a,
+  body.poster .mb-imin,
+  body.poster .mb-imin-names,
+  body.poster .mb-count-hidden {
+    display: none !important;
+  }
+
+  body.poster #shareOverlay {
+    position: static;
+    background: none;
+    display: block;
+    page-break-after: always;
+  }
+  body.poster #shareOverlay .sheet {
+    position: static;
+    background: #fff;
+    color: #000;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    max-height: none;
+    text-align: center;
+  }
+  /* #shareTitle is the dialog's own generic "Share" heading — the gym name is in .sheet-sub. */
+  body.poster #shareTitle {
+    display: none;
+  }
+  body.poster .sheet-sub {
+    display: block;
+    font-size: 28pt;
+    font-weight: 800;
+    color: #000;
+    margin-bottom: 4pt;
+  }
+  body.poster .sheet-sub::before {
+    content: "Scan to see who's in";
+    display: block;
+    font-size: 12pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #444;
+    margin-bottom: 10pt;
+  }
+  body.poster #shareQrCanvas {
+    width: 70mm !important;
+    height: 70mm !important;
+    min-width: 60mm;
+    min-height: 60mm;
+    image-rendering: auto;
+    border: 1pt solid #000;
+    margin: 0 auto 14pt;
+  }
+  body.poster #shareOverlay::after {
+    content: "RollPhase";
+    display: block;
+    margin-top: 16pt;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #888;
+  }
+
+  body.poster #matBoard {
+    color: #000;
+    padding: 12mm;
+    page-break-before: always;
+  }
+  body.poster .mb-title::before {
+    content: "This week's mat times";
+    display: block;
+    font-size: 20pt;
+    font-weight: 800;
+    margin-bottom: 8pt;
+  }
+  body.poster .mb-title,
+  body.poster .mb-sub {
+    display: none;
+  }
+  body.poster .mb-day-label {
+    color: #000;
+    font-size: 11pt;
+    border-bottom: 1pt solid #000;
+    padding-bottom: 2pt;
+    margin-top: 10pt;
+  }
+  body.poster .mb-slot {
+    border: 1pt solid #999;
+    background: #fff;
+    break-inside: avoid;
+  }
+  body.poster .mb-slot-time,
+  body.poster .mb-slot-kind {
+    color: #000;
+  }
+  body.poster .mb-chip,
+  body.poster .mb-kind-badge {
+    border: 1pt solid #000;
+    background: #fff;
+    color: #000;
+  }
+  body.poster #matBoard::after {
+    content: "RollPhase — hang this by the mats";
+    display: block;
+    margin-top: 14pt;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+}
