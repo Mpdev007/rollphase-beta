@@ -54,7 +54,7 @@ function loadSettings() {
 function applySettings(s) {
   const text = s?.text === "sm" || s?.text === "lg" ? s.text : "md";
   document.documentElement.dataset.text = text;
-  if (window.IconPacks) IconPacks.apply(s);
+  if (window.IconPacks) IconPacks.apply({ ...s, iconHue: resolvedIconHue(s) });
 }
 
 function saveSettings(partial) {
@@ -403,6 +403,74 @@ const SWATCH = {
   swimming: "linear-gradient(135deg,#082030,#2ee6ff)",
 };
 
+/** Contour hue for the tab icons. Each sport has its own line color. */
+const SPORT_ICON_HUE = {
+  bjj: 214,
+  mma: 356,
+  boxing: 46,
+  wrestling: 45,
+  muaythai: 44,
+  kickboxing: 345,
+  judo: 222,
+  weightlifting: 210,
+  crossfit: 16,
+  hyrox: 25,
+  pickleball: 78,
+  tennis: 74,
+  basketball: 24,
+  soccer: 142,
+  volleyball: 199,
+  pilates: 340,
+  yoga: 120,
+  running: 16,
+  cycling: 72,
+  climbing: 328,
+  swimming: 187,
+};
+
+function hexToHue(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max - min < 18) return null;
+  const d = max - min;
+  let h = 0;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  if (h < 0) h += 6;
+  return Math.round((h / 6) * 360) % 360;
+}
+
+function resolvedIconHue(s) {
+  const follow = s?.iconHueFollow || "sport";
+  if (follow === "team") {
+    const rep = state.profile?.represent;
+    const teamHue = rep?.enabled ? hexToHue(rep.colors?.accent) : null;
+    if (teamHue != null) return teamHue;
+  }
+  if (follow !== "manual" && state.sport && SPORT_ICON_HUE[state.sport] != null) {
+    return SPORT_ICON_HUE[state.sport];
+  }
+  const n = Number(s?.iconHue);
+  return Number.isFinite(n) ? n : 43;
+}
+
+function rememberIconFollow(follow) {
+  const next = { ...loadSettings(), iconHueFollow: follow };
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore quota */
+  }
+  return next;
+}
+
 function ensureRepresent() {
   const d = {
     enabled: false,
@@ -500,11 +568,11 @@ function applyExploreShell() {
   chip?.classList.add("explore-mode");
   if ($("#sportLabel")) $("#sportLabel").textContent = "Explore";
   if ($("#headerVibe")) $("#headerVibe").textContent = "Any sport · any day";
-  if ($("#heroKicker")) $("#heroKicker").textContent = "Open explore";
-  if ($("#heroTitle")) $("#heroTitle").textContent = "Train what you want today";
+  if ($("#heroKicker")) $("#heroKicker").textContent = "Choose a sport";
+  if ($("#heroTitle")) $("#heroTitle").textContent = "Pick your sport";
   if ($("#heroBlurb")) {
     $("#heroBlurb").textContent =
-      "No lock-in. Focus a sport for today, or stay in Explore. Add favorites on your profile.";
+      "Use the menu at the top. Home, the map, and the list follow that sport.";
   }
   if ($("#heroIcon")) $("#heroIcon").src = "assets/logo.jpg";
   if ($("#gymsModuleTitle")) $("#gymsModuleTitle").textContent = "Venues near you";
@@ -516,6 +584,8 @@ function applyExploreShell() {
   if ($("#feedTitle")) $("#feedTitle").textContent = "Feed";
   if ($("#homeTitle")) $("#homeTitle").textContent = "Near you";
   applyRepresentStrip();
+  applySettings(loadSettings());
+  if (typeof syncIconPackControls === "function") syncIconPackControls(loadSettings());
 }
 
 function applySkin(sportId, { flash = true } = {}) {
@@ -549,7 +619,7 @@ function applySkin(sportId, { flash = true } = {}) {
     }
     if ($("#sportLabel")) $("#sportLabel").textContent = s.short;
     if ($("#headerVibe")) $("#headerVibe").textContent = s.vibe;
-    if ($("#heroKicker")) $("#heroKicker").textContent = "Today’s focus · optional";
+    if ($("#heroKicker")) $("#heroKicker").textContent = "Your sport";
     if ($("#heroTitle")) $("#heroTitle").textContent = s.name;
     if ($("#heroBlurb")) $("#heroBlurb").textContent = s.blurb;
     if ($("#heroIcon")) $("#heroIcon").src = s.icon;
@@ -578,6 +648,8 @@ function applySkin(sportId, { flash = true } = {}) {
     $$(".skin-swatch").forEach((sw) => {
       sw.style.outline = sw.dataset.sport === sportId ? "2px solid #fff" : "none";
     });
+    applySettings(loadSettings());
+    if (typeof syncIconPackControls === "function") syncIconPackControls(loadSettings());
   } catch (e) {
     console.error("applySkin", e);
   }
@@ -600,15 +672,21 @@ function renderStageSwatches() {
   });
 }
 
-/** Set optional focus for today. null = explore all. Never permanent lock. */
+/** The top menu is the sport. null clears it. The choice stays on this phone. */
 function setSport(id) {
-  if ((state.sport || null) !== (id || null)) buzz(10);
-  applySkin(id || null);
+  const next = id || null;
+  if ((state.sport || null) !== next) buzz(10);
+  state.mode = next ? "athlete" : "guest";
+  if (next && SPORT_ICON_HUE[next] != null) {
+    saveSettings({ iconHueFollow: "sport", iconHue: SPORT_ICON_HUE[next] });
+  } else {
+    rememberIconFollow("sport");
+  }
+  applySkin(next);
   state.checkedInGym = null;
   safeRenderAll();
-  // Sport change → re-query live venues for that sport
   if (typeof PlacesLive !== "undefined") {
-    loadLivePlaces({ force: true, sport: id || null });
+    loadLivePlaces({ force: true, sport: next });
   }
 }
 
@@ -701,19 +779,15 @@ function gymFromShare(id) {
   };
 }
 
-/**
- * Live venues: rank sport matches first, but NEVER hide real gyms when tags are incomplete.
- * (OSM often lacks "bjj" tags — filtering them out made the list look empty/fake.)
- */
+/** Live venues for the focused sport only. A general gym does not belong on a BJJ or boxing list. */
 function gymsForSport(sport = focusId()) {
-  const list = [...allLivePlaces()];
-  if (!sport) return list.sort((a, b) => a.mi - b.mi);
-  return list.sort((a, b) => {
-    const am = (a.sports || []).includes(sport) ? 0 : 1;
-    const bm = (b.sports || []).includes(sport) ? 0 : 1;
-    if (am !== bm) return am - bm;
-    return a.mi - b.mi;
-  });
+  const list = [...allLivePlaces()].sort((a, b) => a.mi - b.mi);
+  if (!sport) return list;
+  return list.filter((g) =>
+    typeof PlacesLive !== "undefined" && PlacesLive.placeMatchesSport
+      ? PlacesLive.placeMatchesSport(g, sport)
+      : (g.sports || []).includes(sport)
+  );
 }
 
 /** Product-facing label only — never expose stack/provider names in UI */
@@ -932,8 +1006,10 @@ async function loadLivePlaces(opts = {}) {
     state.live.lastSport = sport;
     state.live.lastFetchedAt = Date.now();
     if (!places.length) {
-      state.live.error =
-        "No venues found in this radius — try a wider city search.";
+      const name = sport ? sportMeta(sport)?.name : "";
+      state.live.error = name
+        ? `No ${name} places in this area. Try another city.`
+        : "No venues found in this radius — try a wider city search.";
     } else if (!state.live.error || !/permission|GPS|secure|blocked/i.test(state.live.error)) {
       state.live.error = null;
     }
@@ -1023,8 +1099,11 @@ function updateLiveStatusBar() {
   const el = $("#livePlacesStatus");
   if (!el) return;
   const L = state.live;
+  const sportName = focusId() ? sportMeta(focusId())?.name : "";
   if (L.loading) {
-    el.innerHTML = `<span class="live-dot"></span> Finding real venues near you…`;
+    el.innerHTML = `<span class="live-dot"></span> ${
+      sportName ? `Finding ${escapeHtml(sportName)} places…` : "Finding places near you…"
+    }`;
     el.classList.remove("error");
     return;
   }
@@ -1038,7 +1117,10 @@ function updateLiveStatusBar() {
     const where =
       L.label ||
       (L.lat != null ? `${L.lat.toFixed(3)}, ${L.lng.toFixed(3)}` : "your area");
-    el.innerHTML = `<span class="live-dot"></span> <strong>${L.places.length} places</strong> · ${escapeHtml(
+    const n = L.places.length;
+    const word = n === 1 ? "place" : "places";
+    const count = sportName ? `${n} ${sportName} ${word}` : `${n} ${word}`;
+    el.innerHTML = `<span class="live-dot"></span> <strong>${escapeHtml(count)}</strong> · ${escapeHtml(
       where
     )}${L.error ? `<br/><span class="err-soft">${escapeHtml(L.error)}</span>` : ""}`;
   } else {
@@ -1147,7 +1229,9 @@ function gymCardHTML(g, sport) {
   const focus = sport || focusId();
   const sports = g.sports || [];
   const primarySport = focus && sports.includes(focus) ? focus : sports[0];
-  const tags = ((g.tags && g.tags[primarySport]) || []).slice(0, 3);
+  const tags = ((g.tags && g.tags[primarySport]) || [])
+    .filter((t) => !/^(phone|website|hours)$/i.test(t))
+    .slice(0, 3);
   const next = (g.next && g.next[primarySport]) || "";
   const here = ((g.here && g.here[primarySport]) || []).length;
   const sportLabels = sports
@@ -1180,8 +1264,6 @@ function gymCardHTML(g, sport) {
       </div>
       <div class="card-tags">
         ${g.open === true ? '<span class="tag-pill open">Open</span>' : ""}
-        ${g.phone ? '<span class="tag-pill">Phone</span>' : ""}
-        ${g.website ? '<span class="tag-pill">Website</span>' : ""}
         ${!focus && sportLabels ? `<span class="tag-pill accent">${escapeHtml(sportLabels)}</span>` : ""}
         ${tags.map((t) => `<span class="tag-pill accent">${escapeHtml(t)}</span>`).join("")}
         ${here ? `<span class="tag-pill live">${here} here</span>` : ""}
@@ -1226,85 +1308,26 @@ function socialCardHTML(p) {
 
 /* ---------- Screens ---------- */
 function renderHomeSportRail() {
-  const rail = $("#homeSportRail");
-  const title = $("#homeSportsTitle");
-  const hint = $("#homeSportsHint");
-  if (!rail) return;
-
-  const mine = profileSports();
-  const focus = focusId();
-
-  if (hasProfileSports()) {
-    if (title) title.textContent = "Your sports";
-    if (hint) {
-      hint.textContent = focus
-        ? `Focus: ${sportMeta(focus)?.short || focus} · tap another anytime · Explore clears focus`
-        : "Tap one for today’s focus — or Browse all. Never locked.";
-    }
-    rail.innerHTML =
-      mine
-        .map((ps) => {
-          const s = sportMeta(ps.id);
-          if (!s) return "";
-          return `
-        <button type="button" class="sport-rail-card ${focus === s.id ? "active" : ""}" data-focus="${s.id}">
-          <img src="${s.icon}" alt="" />
-          <span class="nm">${escapeHtml(s.short)}</span>
-          <span class="lv">${escapeHtml(ps.level || "—")}</span>
-        </button>`;
-        })
-        .join("") +
-      `<button type="button" class="sport-rail-card add-card" id="addSportCard"><span class="plus">+</span>Add sport</button>`;
-  } else {
-    if (title) title.textContent = "Discover sports";
-    if (hint) {
-      hint.textContent =
-        "No profile sports yet — browse freely. Add favorites in Profile when you want.";
-    }
-    // show popular / high-ROI first without forcing
-    const discover = ["bjj", "pickleball", "yoga", "boxing", "hyrox", "pilates", "running", "climbing"]
-      .map((id) => sportMeta(id))
-      .filter(Boolean);
-    rail.innerHTML =
-      discover
-        .map(
-          (s) => `
-        <button type="button" class="sport-rail-card ${focus === s.id ? "active" : ""}" data-focus="${s.id}">
-          <img src="${s.icon}" alt="" />
-          <span class="nm">${escapeHtml(s.short)}</span>
-          <span class="lv">Try today</span>
-        </button>`
-        )
-        .join("") +
-      `<button type="button" class="sport-rail-card add-card" id="addSportCard"><span class="plus">+</span>All sports</button>`;
-  }
+  const mod = $("#homeSportsModule");
+  if (mod) mod.hidden = true;
 }
 
 function renderHomeWelcome() {
   const el = $("#homeWelcome");
   if (!el) return;
+  const sport = focusId();
+  const s = sportMeta(sport);
+  if (s) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  el.hidden = false;
   const rawName = (state.profile.displayName || "").trim();
   const name = rawName && rawName !== "Vlad" && rawName !== "Guest" ? rawName : "";
-  if (hasProfileSports()) {
-    const list = profileSports()
-      .map((ps) => sportMeta(ps.id)?.short || ps.id)
-      .join(" · ");
-    el.innerHTML = `
-      <div class="mode-banner" id="demoBanner">
-        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports</button>
-        <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Just exploring</button>
-      </div>
-      <h2>${name ? `Hey ${escapeHtml(name)}` : "Welcome"}</h2>
-      <p>Your sports: ${escapeHtml(list)}. Focus one for today or stay open — switch anytime.</p>`;
-  } else {
-    el.innerHTML = `
-      <div class="mode-banner" id="demoBanner">
-        <button type="button" class="${state.mode === "athlete" ? "active" : ""}" data-demo="athlete">My sports</button>
-        <button type="button" class="${state.mode === "guest" ? "active" : ""}" data-demo="guest">Just exploring</button>
-      </div>
-      <h2>Welcome</h2>
-      <p>Explore any sport. Add favorites when you’re ready — nothing is required to look around.</p>`;
-  }
+  el.innerHTML = `
+    <h2>${name ? `Hey ${escapeHtml(name)}` : "Welcome"}</h2>
+    <p>Choose a sport from the menu at the top. Home and the map follow that sport.</p>`;
 }
 
 function paintTrainToggle() {
@@ -1346,7 +1369,7 @@ function renderHome() {
     if (s) {
       roi.innerHTML = `<strong style="color:var(--text)">${escapeHtml(s.short)} near you</strong><br/>${s.roiSurfaces.map(escapeHtml).join(" · ")}`;
     } else {
-      roi.innerHTML = `<strong style="color:var(--text)">Exploring all sports</strong><br/>Mixed venues and events nearby. Tap a sport to focus — tap again to clear.`;
+      roi.innerHTML = `<strong style="color:var(--text)">Choose a sport</strong><br/>The menu at the top sets the home, the map, and the list.`;
     }
   }
 
@@ -1359,8 +1382,11 @@ function renderHome() {
     } else if (!gyms.length) {
       homeGyms.innerHTML =
         empty(
-          "No places yet",
-          state.live.error || "Open Venues and use your location or search a city."
+          s ? `No ${s.name} places yet` : "No places yet",
+          state.live.error ||
+            (s
+              ? "This list is only that sport. Open the map and search a city if none are near you."
+              : "Open the map and use your location or search a city.")
         ) +
         `<button type="button" class="btn-ghost" id="homeLoadPlaces" style="width:100%;margin-top:8px;padding:12px">Find places near me</button>`;
       $("#homeLoadPlaces")?.addEventListener("click", () => {
@@ -1475,9 +1501,10 @@ function renderGyms() {
     b.classList.toggle("active", b.dataset.view === (mapMode ? "map" : "list"));
   });
 
+  const focusName = focusId() ? sportMeta(focusId())?.name : "";
   if (state.live.loading && !list.length) {
     listEl.innerHTML = empty(
-      "Finding places near you…",
+      focusName ? `Finding ${focusName} places…` : "Finding places near you…",
       "Allow location when asked, or search a city above."
     );
     if (mapMode && typeof L !== "undefined") renderLiveMap([]);
@@ -1503,7 +1530,7 @@ function renderGyms() {
     }
     listEl.innerHTML =
       empty("Nothing matched that filter", "These places do not list it.") +
-      `<button type="button" class="btn-primary" id="clearGymFilter" style="margin-top:12px">Show all places</button>`;
+      `<button type="button" class="btn-primary" id="clearGymFilter" style="margin-top:12px">Show the full list</button>`;
     $("#clearGymFilter")?.addEventListener("click", () => {
       state.gymFilter = "all";
       renderGymFilters();
@@ -1520,20 +1547,13 @@ function renderGyms() {
   }
   {
     const focus = focusId();
-    const matchCount = focus
-      ? list.filter((g) => (g.sports || []).includes(focus)).length
-      : list.length;
-    const note =
-      focus && matchCount < list.length
-        ? `<p class="hint" style="margin-bottom:10px">${matchCount} closer to ${escapeHtml(
-            sportMeta(focus)?.short || focus
-          )} · ${list.length - matchCount} other places nearby</p>`
-        : "";
     listEl.innerHTML = list.length
-      ? note + list.map((g) => gymCardHTML(g, focus)).join("")
+      ? list.map((g) => gymCardHTML(g, focus)).join("")
       : empty(
-          "No places in this area",
-          "Search another city, clear filters, or move the map area with a new location."
+          focusName ? `No ${focusName} places in this area` : "No places in this area",
+          focusName
+            ? "This map is only that sport. Search another city if none are near you."
+            : "Search a city, or choose a sport at the top."
         );
   }
 }
@@ -2486,7 +2506,9 @@ function renderRepresentSummary(host) {
 
   $("#repEnabledMain")?.addEventListener("change", (e) => {
     rep.enabled = e.target.checked;
+    rememberIconFollow(rep.enabled && hexToHue(rep.colors?.accent) != null ? "team" : "sport");
     applyRepresentStrip();
+    applySettings(loadSettings());
   });
   $("#repLabelMain")?.addEventListener("input", (e) => {
     rep.label = e.target.value;
@@ -2682,8 +2704,10 @@ function renderRepresentStudio(host) {
     rep.pattern = t.pattern;
     rep.mode = "template";
     rep.enabled = true;
+    if (hexToHue(rep.colors?.accent) != null) rememberIconFollow("team");
     renderRepresentStudio(host);
     applyRepresentStrip();
+    applySettings(loadSettings());
   });
 
   $("#nixAnalyze")?.addEventListener("click", async () => {
@@ -2707,8 +2731,10 @@ function renderRepresentStudio(host) {
       };
       rep.mode = "smart";
       rep.enabled = true;
+      if (hexToHue(rep.colors?.accent) != null) rememberIconFollow("team");
       renderRepresentStudio(host);
       applyRepresentStrip();
+      applySettings(loadSettings());
     } catch (err) {
       rep.nix = { status: "error", notes: "Could not read that image. Try another file.", source: "error", samples: [] };
       $("#nixNotes").textContent = rep.nix.notes;
@@ -2738,8 +2764,10 @@ function renderRepresentStudio(host) {
         samples: rep.nix.samples || [],
       };
       rep.enabled = true;
+      if (hexToHue(rep.colors?.accent) != null) rememberIconFollow("team");
       renderRepresentStudio(host);
       applyRepresentStrip();
+      applySettings(loadSettings());
     } catch (err) {
       $("#nixNotes").textContent = "Could not refine right now. Try again.";
     }
@@ -2769,7 +2797,9 @@ function setRepColor(key, hex, host, opts = {}) {
     if (gEl) gEl.value = g;
     if (bEl) bEl.value = b;
   }
+  if (key === "accent" && hexToHue(hex) != null) rememberIconFollow("team");
   applyRepresentStrip();
+  if (key === "accent") applySettings(loadSettings());
 }
 
 function paintRepLogoPreview() {
@@ -3005,11 +3035,11 @@ function bindIconPack(settings) {
       const btn = e.target.closest("[data-hue]");
       if (!btn) return;
       buzz(8);
-      saveSettings({ iconHue: Number(btn.dataset.hue) });
+      saveSettings({ iconHue: Number(btn.dataset.hue), iconHueFollow: "manual" });
       syncIconPackControls(loadSettings());
     });
     hue.addEventListener("input", () => {
-      saveSettings({ iconHue: Number(hue.value) });
+      saveSettings({ iconHue: Number(hue.value), iconHueFollow: "manual" });
       syncIconPackControls(loadSettings());
     });
     vis.addEventListener("input", () => {
@@ -3027,7 +3057,7 @@ function syncIconPackControls(settings) {
   });
   const hue = $("#iconHue");
   const vis = $("#iconVis");
-  const hueValue = current.hue ?? current.iconHue;
+  const hueValue = resolvedIconHue(settings);
   const visValue = current.vis ?? current.iconVis;
   if (hue && document.activeElement !== hue) hue.value = String(hueValue);
   if (vis && document.activeElement !== vis) vis.value = String(visValue);

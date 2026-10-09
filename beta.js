@@ -319,7 +319,7 @@ function openAboutSheet(opts = {}) {
         <h3>What it does</h3>
         <p>Rollphase finds a place to train, shows who is on that mat, and lets you share the session. It covers many sports. Focus one when you want. Leave it open when you do not.</p>
         <h3>How it works</h3>
-        <p><strong>1. Sport.</strong> Pick one on Home, or tap Just exploring to look at every sport today. My sports uses only the sports you saved. Nothing is filled in for you.</p>
+        <p><strong>1. Sport.</strong> Choose it from the menu at the top. Home, the map, and the list follow that sport. Change it from the same menu.</p>
         <p><strong>2. Places.</strong> Gyms lists real places near you, on a map and in a list. Call, the website, the map, and directions show up when that place lists them.</p>
         <p><strong>3. The board.</strong> Open a gym for the timetable and who is here. I’m here puts you on that board. Turn Show in “here now” off in Settings when you want to stay off it.</p>
         <p><strong>4. Share.</strong> Your profile, a gym, and a session each have a code. A phone without Rollphase installs it. A phone that already has it opens that place.</p>

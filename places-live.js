@@ -42,29 +42,32 @@ const PlacesLive = (() => {
     "https://overpass-api.de/api/interpreter",
   ];
 
-  /** Sport → free-text search terms for Nominatim / Photon */
+  /**
+   * Sport → search words. These stay specific on purpose.
+   * A bare "gym" or "dojo" search is what filled BJJ and boxing with every fitness club.
+   */
   const SPORT_QUERIES = {
-    bjj: ["jiu jitsu", "brazilian jiu jitsu", "martial arts gym", "dojo", "gym"],
-    mma: ["mma gym", "martial arts", "gym"],
-    boxing: ["boxing gym", "gym"],
-    wrestling: ["wrestling club", "gym"],
-    muaythai: ["muay thai", "thai boxing", "gym"],
-    kickboxing: ["kickboxing", "gym"],
-    judo: ["judo", "dojo", "gym"],
-    weightlifting: ["gym", "fitness centre", "weight room"],
-    crossfit: ["crossfit", "gym"],
-    hyrox: ["hyrox", "functional fitness", "gym"],
-    pickleball: ["pickleball", "sports centre"],
+    bjj: ["brazilian jiu jitsu", "jiu jitsu"],
+    mma: ["mma gym", "mixed martial arts"],
+    boxing: ["boxing gym", "boxing club"],
+    wrestling: ["wrestling club", "wrestling gym"],
+    muaythai: ["muay thai", "thai boxing"],
+    kickboxing: ["kickboxing gym", "kickboxing"],
+    judo: ["judo club", "judo dojo"],
+    weightlifting: ["fitness centre", "gym"],
+    crossfit: ["crossfit", "crossfit gym"],
+    hyrox: ["hyrox", "functional fitness"],
+    pickleball: ["pickleball", "pickleball court"],
     tennis: ["tennis club", "tennis court"],
-    basketball: ["basketball gym", "recreation center"],
+    basketball: ["basketball gym", "basketball court"],
     soccer: ["soccer field", "futsal"],
-    volleyball: ["volleyball"],
-    pilates: ["pilates"],
+    volleyball: ["volleyball", "volleyball court"],
+    pilates: ["pilates studio", "pilates"],
     yoga: ["yoga studio", "yoga"],
-    running: ["running track", "running club"],
-    cycling: ["bike shop", "bicycle"],
-    climbing: ["climbing gym", "bouldering"],
-    swimming: ["swimming pool", "aquatic"],
+    running: ["running club", "running track"],
+    cycling: ["bike shop", "bicycle shop"],
+    climbing: ["climbing gym", "bouldering gym"],
+    swimming: ["swimming pool", "aquatic center"],
   };
 
   const SPORT_GOOGLE_TYPE = {
@@ -170,42 +173,61 @@ const PlacesLive = (() => {
 
   function inferSports(tags, name) {
     const s = new Set();
-    const sport = String(tags?.sport || tags?.class || "").toLowerCase();
-    const n = (name || "").toLowerCase();
-    const type = String(tags?.type || tags?.amenity || tags?.leisure || "").toLowerCase();
+    const sport = String(tags?.sport || "").toLowerCase();
+    const n = name || "";
+    const type = String(tags?.amenity || tags?.leisure || tags?.type || "").toLowerCase();
     const add = (id) => s.add(id);
-    if (/jiu|jitsu|bjj|grappling/.test(n) || /jiu|brazilian/.test(sport)) add("bjj");
-    if (/mma|mixed martial|ufc/.test(n) || sport === "mma") add("mma");
-    if (/\bbox(ing)?\b/.test(n) || sport === "boxing") add("boxing");
-    if (/wrestl/.test(n) || sport === "wrestling") add("wrestling");
-    if (/muay|thai box/.test(n) || /muay/.test(sport)) add("muaythai");
-    if (/kickbox/.test(n) || sport === "kickboxing") add("kickboxing");
-    if (/judo/.test(n) || sport === "judo") add("judo");
-    if (/crossfit|cross fit/.test(n)) add("crossfit");
-    if (/hyrox|functional/.test(n)) add("hyrox");
-    if (/pickle/.test(n) || sport === "pickleball") add("pickleball");
-    if (/tennis/.test(n) || sport === "tennis") add("tennis");
-    if (/basket|hoop/.test(n) || sport === "basketball") add("basketball");
-    if (/soccer|football|futsal/.test(n) || sport === "soccer") add("soccer");
-    if (/volley/.test(n) || sport === "volleyball") add("volleyball");
-    if (/pilates/.test(n) || sport === "pilates") add("pilates");
-    if (/yoga/.test(n) || sport === "yoga") add("yoga");
-    if (/climb|boulder|crux/.test(n) || sport === "climbing") add("climbing");
-    if (/swim|aquatic|pool/.test(n) || sport === "swimming" || type.includes("pool"))
-      add("swimming");
-    if (/bike|cycle|bicycle/.test(n) || type === "bicycle") add("cycling");
-    if (/run|track/.test(n)) add("running");
+    const hit = (id, nameRe, sportRe) => {
+      if (nameRe.test(n) || (sport && sportRe.test(sport))) add(id);
+    };
+    hit("bjj", /jiu[\s-]?jitsu|\bbjj\b|\bgracie\b|grappling/i, /jiu|bjj|grappling/);
+    hit("mma", /\bmma\b|mixed martial/i, /\bmma\b|mixed_martial/);
+    hit("boxing", /\bboxing\b/i, /(^|_)boxing$/);
+    hit("wrestling", /wrestl/i, /wrestl/);
+    hit("muaythai", /muay|thai box/i, /muay/);
+    hit("kickboxing", /kickbox/i, /kickbox/);
+    hit("judo", /\bjudo\b/i, /judo/);
+    hit("crossfit", /cross\s?fit/i, /crossfit/);
+    hit("hyrox", /\bhyrox\b|functional fitness/i, /hyrox/);
+    hit("pickleball", /pickleball/i, /pickleball/);
+    hit("tennis", /\btennis\b/i, /tennis/);
+    hit("basketball", /basketball|\bhoops?\b/i, /basketball/);
+    hit("soccer", /\bsoccer\b|\bfutsal\b/i, /soccer|futsal/);
+    hit("volleyball", /volleyball/i, /volleyball/);
+    hit("pilates", /pilates/i, /pilates/);
+    hit("yoga", /\byoga\b/i, /yoga/);
+    hit("climbing", /climb|boulder/i, /climb|boulder/);
+    hit("swimming", /\bswim|aquatic|swimming pool/i, /swim/);
+    hit("cycling", /bicycle|bike shop|\bcycling\b/i, /cycling|bicycle/);
+    hit("running", /running|run club|track club/i, /running/);
+    if (s.has("kickboxing")) s.delete("boxing");
+    if (s.has("muaythai")) {
+      const rest = n.replace(/thai\s+boxing|muay\s+thai/gi, "");
+      if (!/\bboxing\b/i.test(rest)) s.delete("boxing");
+    }
+    if (/pool/.test(type) || /swim/.test(sport)) add("swimming");
+    // A plain gym is a weight room. It is not a BJJ academy, a boxing gym, or an MMA gym.
     if (
-      /gym|fitness|iron|strength|power|athletic|recreation/.test(n) ||
-      type.includes("fitness") ||
-      type === "gym"
+      !s.size &&
+      (/weightlift|powerlift|barbell|olympic lift|\bgym\b|fitness|strength/i.test(n) ||
+        /fitness|gym/.test(type) ||
+        /weight|powerlift|fitness/.test(sport))
     ) {
       add("weightlifting");
     }
-    if (/dojo|martial/.test(n) || /martial/.test(sport)) {
-      if (![...s].some((x) => ["bjj", "judo", "mma", "karate"].includes(x))) add("bjj");
-    }
     return [...s];
+  }
+
+  /** True when this place actually trains the focused sport. */
+  function placeMatchesSport(place, sportId) {
+    if (!sportId) return true;
+    if (!place) return false;
+    const inferred = inferSports({}, place.name || "");
+    if (inferred.includes(sportId)) return true;
+    if (place.source === "own" && (place.sports || []).includes(sportId)) return true;
+    const stored = place.sports || [];
+    if (!stored.includes(sportId)) return false;
+    return !inferred.some((id) => id !== sportId);
   }
 
   function buildTagsFromBits(bits, sports) {
@@ -290,7 +312,7 @@ const PlacesLive = (() => {
   }
 
   function venueShell(partial) {
-    const sports = partial.sports?.length ? partial.sports : ["weightlifting"];
+    const sports = partial.sports?.length ? partial.sports : [];
     const open = partial.open === true ? true : partial.open === false ? false : null;
     return {
       next: {},
@@ -376,13 +398,10 @@ const PlacesLive = (() => {
     const address = item.display_name || "";
     const mi = Math.round(haversineMi(userLat, userLng, lat, lng) * 10) / 10;
     const sports = inferSports(
-      { sport: et.sport || item.type, amenity: item.type, class: item.class },
+      { sport: et.sport || "", amenity: item.type, leisure: item.class },
       name
     );
-    if (sportId && !sports.includes(sportId)) {
-      // keep but mark generic fitness so sport filter can still rank
-      if (!sports.length) sports.push("weightlifting");
-    }
+    if (sportId && !sports.includes(sportId)) return null;
     const osmType = item.osm_type === "way" ? "way" : item.osm_type === "relation" ? "relation" : "node";
     return venueShell({
       id: `nom-${item.osm_type || "n"}-${item.osm_id || item.place_id}`,
@@ -400,7 +419,7 @@ const PlacesLive = (() => {
       osmUrl: item.osm_id
         ? `https://www.openstreetmap.org/${osmType}/${item.osm_id}`
         : undefined,
-      sports: sports.length ? sports : sportId ? [sportId, "weightlifting"] : ["weightlifting"],
+      sports,
       tagBits: [
         phone ? "Phone" : null,
         website ? "Website" : null,
@@ -424,18 +443,6 @@ const PlacesLive = (() => {
         });
       } catch (e) {
         console.warn("Nominatim query failed", use[i], e);
-      }
-    }
-    // Always include a plain "gym" pass if sport-specific returned little
-    if (all.length < 5 && !use.includes("gym")) {
-      try {
-        const rows = await throttledNominatim(() => withTimeout(nominatimSearch("gym", vb), 12000, "nominatim"));
-        rows.forEach((row) => {
-          const p = nominatimToPlace(row, lat, lng, sportId);
-          if (p) all.push(p);
-        });
-      } catch (e) {
-        console.warn("Nominatim gym pass failed", e);
       }
     }
     return dedupePlaces(all);
@@ -471,6 +478,7 @@ const PlacesLive = (() => {
         .join(", ");
       const mi = Math.round(haversineMi(lat, lng, plat, plng) * 10) / 10;
       const sports = inferSports({ sport: props.osm_value, amenity: props.osm_key }, name);
+      if (sportId && !sports.includes(sportId)) return null;
       return venueShell({
         id: `pho-${props.osm_type || "n"}-${props.osm_id || name}`,
         source: "photon",
@@ -486,7 +494,7 @@ const PlacesLive = (() => {
         osmUrl: props.osm_id
           ? `https://www.openstreetmap.org/${props.osm_type === "W" ? "way" : props.osm_type === "R" ? "relation" : "node"}/${props.osm_id}`
           : undefined,
-        sports: sports.length ? sports : ["weightlifting"],
+        sports,
         tagBits: [],
       });
     });
@@ -520,19 +528,66 @@ const PlacesLive = (() => {
     throw lastErr || new Error("Overpass failed");
   }
 
-  async function fetchOsmNearby({ lat, lng, radiusM = 10000 }) {
+  const OVERPASS_NAME = {
+    bjj: "jiu.?jitsu|jitsu|bjj|gracie|grappling",
+    mma: "mma|mixed martial",
+    boxing: "boxing",
+    wrestling: "wrestling",
+    muaythai: "muay|thai boxing",
+    kickboxing: "kickbox",
+    judo: "judo",
+    weightlifting: "weightlift|powerlift|barbell|fitness",
+    crossfit: "crossfit|cross fit",
+    hyrox: "hyrox",
+    pickleball: "pickleball",
+    tennis: "tennis",
+    basketball: "basketball",
+    soccer: "soccer|futsal",
+    volleyball: "volleyball",
+    pilates: "pilates",
+    yoga: "yoga",
+    running: "running",
+    cycling: "bicycle|bike shop|cycling",
+    climbing: "climb|boulder",
+    swimming: "swim|aquatic",
+  };
+
+  function overpassQuery(lat, lng, radiusM, sportId) {
     const r = Math.round(radiusM);
-    const q = `[out:json][timeout:12];
+    const around = `(around:${r},${lat},${lng})`;
+    const broad = `[out:json][timeout:12];
 (
-  nwr["leisure"="fitness_centre"](around:${r},${lat},${lng});
-  nwr["leisure"="sports_centre"](around:${r},${lat},${lng});
-  nwr["leisure"="dojo"](around:${r},${lat},${lng});
-  nwr["amenity"="gym"](around:${r},${lat},${lng});
-  nwr["sport"="martial_arts"](around:${r},${lat},${lng});
-  nwr["leisure"="swimming_pool"](around:${r},${lat},${lng});
-  nwr["sport"="climbing"](around:${r},${lat},${lng});
+  nwr["leisure"="fitness_centre"]${around};
+  nwr["leisure"="sports_centre"]${around};
+  nwr["amenity"="gym"]${around};
+  nwr["leisure"="swimming_pool"]${around};
+  nwr["sport"="climbing"]${around};
 );
 out center tags 40;`;
+    const name = sportId && OVERPASS_NAME[sportId];
+    if (!name) return broad;
+    let extra = "";
+    if (sportId === "weightlifting") {
+      extra = `
+  nwr["leisure"="fitness_centre"]${around};
+  nwr["amenity"="gym"]${around};`;
+    } else if (sportId === "swimming") {
+      extra = `
+  nwr["leisure"="swimming_pool"]${around};`;
+    } else if (sportId === "climbing") {
+      extra = `
+  nwr["sport"="climbing"]${around};`;
+    }
+    return `[out:json][timeout:12];
+(
+  nwr["name"~"${name}",i]${around};
+  nwr["sport"~"${name}",i]${around};${extra}
+);
+out center tags 40;`;
+  }
+
+  async function fetchOsmNearby({ lat, lng, radiusM = 10000, sportId = null }) {
+    const q = overpassQuery(lat, lng, radiusM, sportId);
     const data = await overpassFetch(q);
     return dedupePlaces(
       (data.elements || [])
@@ -551,6 +606,7 @@ out center tags 40;`;
             .join(" ");
           const mi = Math.round(haversineMi(lat, lng, plat, plng) * 10) / 10;
           const sports = inferSports(tags, tags.name);
+          if (sportId && !sports.includes(sportId)) return null;
           const osmType = el.type || "node";
           return venueShell({
             id: `osm-${osmType}-${el.id}`,
@@ -566,7 +622,7 @@ out center tags 40;`;
             lng: plng,
             mapsUrl: mapsSearchUrl(tags.name, address, plat, plng),
             osmUrl: `https://www.openstreetmap.org/${osmType}/${el.id}`,
-            sports: sports.length ? sports : ["weightlifting"],
+            sports,
             tagBits: [
               phone ? "Phone" : null,
               website ? "Website" : null,
@@ -589,10 +645,8 @@ out center tags 40;`;
     const name = p.displayName?.text || "Venue";
     const openNow = p.regularOpeningHours?.openNow;
     const hoursText = (p.regularOpeningHours?.weekdayDescriptions || []).join(" · ");
-    const sports = sportId
-      ? [sportId, ...inferSports({ sport: (p.types || []).join(" ") }, name)]
-      : inferSports({ sport: (p.types || []).join(" ") }, name);
-    const sportList = [...new Set(sports.length ? sports : ["weightlifting"])];
+    const sports = inferSports({ sport: (p.types || []).join(" ") }, name);
+    if (sportId && !sports.includes(sportId)) return null;
     return venueShell({
       id: `ggl-${p.id || name}`,
       source: "google",
@@ -609,7 +663,7 @@ out center tags 40;`;
       mapsUrl: p.googleMapsUri || mapsSearchUrl(name, p.formattedAddress, plat, plng),
       googleRating: p.rating,
       googleRatingCount: p.userRatingCount,
-      sports: sportList,
+      sports,
       tagBits: [
         p.rating ? `★ ${p.rating}` : null,
         p.nationalPhoneNumber ? "Phone" : null,
@@ -643,7 +697,7 @@ out center tags 40;`;
       throw new Error(`Google Nearby ${res.status}: ${t.slice(0, 160)}`);
     }
     const data = await res.json();
-    return (data.places || []).map((p) => googlePlaceToVenue(p, lat, lng, sportId));
+    return (data.places || []).map((p) => googlePlaceToVenue(p, lat, lng, sportId)).filter(Boolean);
   }
 
   async function fetchGoogleText({ lat, lng, radiusM = 10000, sportId = null }) {
@@ -668,7 +722,7 @@ out center tags 40;`;
     });
     if (!res.ok) throw new Error(`Google Text ${res.status}`);
     const data = await res.json();
-    return (data.places || []).map((p) => googlePlaceToVenue(p, lat, lng, sportId));
+    return (data.places || []).map((p) => googlePlaceToVenue(p, lat, lng, sportId)).filter(Boolean);
   }
 
   async function fetchGoogleCombined(opts) {
@@ -766,18 +820,22 @@ out center tags 40;`;
   const OSM_AREA_PREFIX = "rollphase.osmArea.";
   const OSM_AREA_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-  function areaQueriedRecently(lat, lng) {
+  function areaToken(lat, lng, sportId) {
+    return OSM_AREA_PREFIX + geohash5(lat, lng) + "." + (sportId || "all");
+  }
+
+  function areaQueriedRecently(lat, lng, sportId) {
     try {
-      const at = +(localStorage.getItem(OSM_AREA_PREFIX + geohash5(lat, lng)) || 0);
+      const at = +(localStorage.getItem(areaToken(lat, lng, sportId)) || 0);
       return at > 0 && Date.now() - at < OSM_AREA_MAX_AGE_MS;
     } catch {
       return false;
     }
   }
 
-  function markAreaQueried(lat, lng) {
+  function markAreaQueried(lat, lng, sportId) {
     try {
-      localStorage.setItem(OSM_AREA_PREFIX + geohash5(lat, lng), String(Date.now()));
+      localStorage.setItem(areaToken(lat, lng, sportId), String(Date.now()));
     } catch {
       /* private mode / quota */
     }
@@ -854,11 +912,12 @@ out center tags 40;`;
       const now = new Date();
       return rows.map((r) => {
         const detail = detailsByGym.get(r.id) || {};
-        const sports = [...(sportsByGym.get(r.id) || [])];
+        const slotSports = [...(sportsByGym.get(r.id) || [])];
+        const sports = [...new Set([...slotSports, ...inferSports({}, r.name)])];
         const slotCount = Number(r.slot_count) || 0;
         const next = {};
         if (slotCount > 0) {
-          for (const sport of sports) {
+          for (const sport of slotSports) {
             const line = nextOpenMatLine(slotsByGym.get(r.id) || [], sport, r.dropin_fee, now);
             if (line) next[sport] = line;
           }
@@ -919,27 +978,28 @@ out center tags 40;`;
     const lat = round3(base.lat);
     const lng = round3(base.lng);
     const publicBase = { ...base, lat, lng };
-    const skipOsm = own.length >= 5 || areaQueriedRecently(lat, lng);
-    if (skipOsm) {
-      return { provider: own.length ? "own" : "nominatim", places: own, sources: own.length ? ["own"] : [] };
-    }
+    const sportId = publicBase.sportId || null;
+    // A previous search of this area must not skip the sport the athlete just chose.
+    const skipOverpass = areaQueriedRecently(lat, lng, sportId);
 
     if (cfg.googlePlacesApiKey) {
       try {
         const places = await fetchGoogleCombined(publicBase);
-        if (places.length) return { provider: "google", places: dedupePlaces([...own, ...places]), sources: ["own", "google"] };
+        const merged = dedupePlaces([...own, ...places].filter(Boolean));
+        const curated = sportId ? merged.filter((p) => placeMatchesSport(p, sportId)) : merged;
+        if (curated.length) return { provider: "google", places: curated, sources: ["own", "google"] };
       } catch (e) {
         console.warn("Google Places failed, free stack next", e);
       }
     }
 
-    // Free stack in parallel where possible (Nominatim throttled to 1 req/s inside)
+    // Nominatim and Photon always run for the focused sport. Overpass is the slow one.
     const [nom, pho, osm] = await Promise.allSettled([
       fetchNominatimNearby(publicBase),
       fetchPhotonNearby(publicBase),
-      fetchOsmNearby(publicBase),
+      skipOverpass ? Promise.resolve([]) : fetchOsmNearby(publicBase),
     ]);
-    markAreaQueried(lat, lng);
+    if (!skipOverpass && osm.status === "fulfilled") markAreaQueried(lat, lng, sportId);
 
     const parts = [...own];
     const sources = own.length ? ["own"] : [];
@@ -956,8 +1016,11 @@ out center tags 40;`;
       sources.push("osm");
     }
 
-    const places = dedupePlaces(parts);
-    if (!places.length) {
+    let places = dedupePlaces(parts);
+    if (sportId) places = places.filter((p) => placeMatchesSport(p, sportId));
+    const searched =
+      nom.status === "fulfilled" || pho.status === "fulfilled" || osm.status === "fulfilled";
+    if (!places.length && !searched) {
       const err =
         nom.status === "rejected"
           ? nom.reason
@@ -965,6 +1028,9 @@ out center tags 40;`;
             ? pho.reason
             : new Error("No live venues found in this area");
       throw err;
+    }
+    if (!places.length) {
+      return { provider: sources[0] || "nominatim", places: [], sources };
     }
 
     // Prefer venues with contact info when merging, but keep RollPhase's own venues on top —
@@ -1140,5 +1206,7 @@ out center tags 40;`;
     geohash5,
     areaQueriedRecently,
     markAreaQueried,
+    inferSports,
+    placeMatchesSport,
   };
 })();

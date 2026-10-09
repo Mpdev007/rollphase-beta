@@ -1011,6 +1011,8 @@ body.beta-locked .stage {
 }
 
 /* ----- Multi-sport home (non-forced) ----- */
+#homeSportsModule { display: none !important; }
+
 .home-welcome {
   margin-bottom: 12px;
 }
