@@ -443,7 +443,17 @@ const MatBoard = (() => {
       const names = intents
         .map((i) => data.profilesById.get(i.user_id))
         .filter(Boolean)
-        .map((p) => `<b>${escapeHtml(p.display_name)}</b> (${escapeHtml(p.belt || "unranked")}${p.belt ? (p.belt_verified ? ` <span class="verified">✓ verified</span>` : ", self-declared") : ""})`)
+        .map((p) => {
+          const belt = p.belt
+            ? `${escapeHtml(p.belt)}${p.belt_verified ? ` <span class="verified">✓ verified</span>` : ", self-declared"}`
+            : "unranked";
+          const near =
+            p.id !== myId &&
+            typeof levelsNear === "function" &&
+            typeof myLevel === "function" &&
+            levelsNear(myLevel(slot.sport), p.belt || "");
+          return `<b>${escapeHtml(p.display_name)}</b> (${belt}${near ? " · next to you" : ""})`;
+        })
         .join(", ");
       inSection = `<div class="mb-slot-in">
         <button type="button" class="mb-imin${mine ? " on" : ""}" data-action="imin" data-slot="${slot.id}" data-date="${occ.iso}">${intents.length} in</button>

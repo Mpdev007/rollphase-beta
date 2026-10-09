@@ -176,11 +176,6 @@ const UpdateCheck = (() => {
   function adoptRemote(remote) {
     boot = remote;
     window.ROLLPHASE_BUILD = remote;
-    if (typeof BETA !== "undefined" && remote.version) {
-      BETA.version = remote.version;
-      BETA.buildId = remote.buildId;
-      BETA.buildLabel = "Closed beta · early access";
-    }
     paintBuildLabel();
     try {
       localStorage.setItem(STORAGE_BOOT, buildKey(remote));

@@ -241,6 +241,16 @@ body.beta-locked .stage {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   color: #f3f5f7;
 }
+.feedback-panel:has(.beta-scroll) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.feedback-panel .beta-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
 .feedback-panel h2 {
   font-size: 1.15rem;
   font-weight: 800;

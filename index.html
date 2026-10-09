@@ -312,7 +312,7 @@
 
                 <div class="card static">
                   <h3>Notifications</h3>
-                  <p class="muted small">What to emphasize in Feed and future push alerts.</p>
+                  <p class="muted small">These change what Feed emphasizes. Nothing is sent to the lock screen.</p>
                   <div id="notifyPrefs"></div>
                 </div>
 
@@ -320,11 +320,13 @@
                   <h3>Privacy</h3>
                   <label class="toggle-row"><span>Open to train</span><input type="checkbox" id="privOpenTrain" checked /></label>
                   <label class="toggle-row"><span>Show in “here now”</span><input type="checkbox" id="privShowHere" checked /></label>
+                  <button type="button" class="btn-ghost" id="openPrivacyNote" style="width:100%;margin-top:8px;padding:12px">What is kept</button>
+                  <button type="button" class="btn-ghost" id="deleteMyData" style="width:100%;margin-top:8px;padding:12px">Delete my data</button>
                 </div>
 
                 <div class="card static" id="assistantCard">
                   <h3>Your assistant</h3>
-                  <p class="muted small">Muse runs the app with your own Muse account, after the app premium. A Gemini key writes the note about a place and stays on this phone. Both keeps those jobs separate. Rollphase does not pay for either.</p>
+                  <p class="muted small">Muse runs the app with your own Muse account, after the app premium. Paste a Muse link this phone can reach. There is no card checkout. A Gemini key writes the note about a place and stays on this phone. Both keeps those jobs separate.</p>
                   <div class="seg" id="assistantMode" style="margin:10px 0">
                     <button type="button" class="seg-btn" data-assistant="muse">Muse</button>
                     <button type="button" class="seg-btn" data-assistant="gemini">Gemini</button>

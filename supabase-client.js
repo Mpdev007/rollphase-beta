@@ -72,12 +72,50 @@ const RP = (() => {
     return data;
   }
 
+  /** The stored session only. Does not sign in. */
+  async function existingUser() {
+    const c = client();
+    if (!c) return null;
+    try {
+      const { data } = await c.auth.getSession();
+      return data?.session?.user || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Writes the board name when this phone already signed in for the board.
+   * Skips when there is no session, so opening the app does not create an account.
+   */
+  async function mirrorIfSignedIn(displayName, sport, belt) {
+    const c = client();
+    const u = await existingUser();
+    if (!c || !u) return null;
+    const name = String(displayName || "").trim();
+    if (name.length < 1 || name.length > 40) return null;
+    const row = {
+      id: u.id,
+      display_name: name,
+      sport: sport || null,
+      belt: belt ? String(belt).slice(0, 40) : null,
+    };
+    const { error } = await c.from("profiles").upsert(row);
+    if (error) {
+      failedRequest = true;
+      return null;
+    }
+    return true;
+  }
+
   return {
     get db() {
       return client();
     },
     user,
+    existingUser,
     ensureProfile,
+    mirrorIfSignedIn,
     get online() {
       return (typeof navigator === "undefined" || navigator.onLine !== false) && !failedRequest;
     },

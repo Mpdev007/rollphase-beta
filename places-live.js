@@ -916,14 +916,17 @@ out center tags 40;`;
     const base = { ...opts, radiusM };
 
     const own = await fetchOwnVenues(base);
-    const skipOsm = own.length >= 5 || areaQueriedRecently(base.lat, base.lng);
+    const lat = round3(base.lat);
+    const lng = round3(base.lng);
+    const publicBase = { ...base, lat, lng };
+    const skipOsm = own.length >= 5 || areaQueriedRecently(lat, lng);
     if (skipOsm) {
       return { provider: own.length ? "own" : "nominatim", places: own, sources: own.length ? ["own"] : [] };
     }
 
     if (cfg.googlePlacesApiKey) {
       try {
-        const places = await fetchGoogleCombined(base);
+        const places = await fetchGoogleCombined(publicBase);
         if (places.length) return { provider: "google", places: dedupePlaces([...own, ...places]), sources: ["own", "google"] };
       } catch (e) {
         console.warn("Google Places failed, free stack next", e);
@@ -932,11 +935,11 @@ out center tags 40;`;
 
     // Free stack in parallel where possible (Nominatim throttled to 1 req/s inside)
     const [nom, pho, osm] = await Promise.allSettled([
-      fetchNominatimNearby(base),
-      fetchPhotonNearby(base),
-      fetchOsmNearby(base),
+      fetchNominatimNearby(publicBase),
+      fetchPhotonNearby(publicBase),
+      fetchOsmNearby(publicBase),
     ]);
-    markAreaQueried(base.lat, base.lng);
+    markAreaQueried(lat, lng);
 
     const parts = [...own];
     const sources = own.length ? ["own"] : [];

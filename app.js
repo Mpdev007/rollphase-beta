@@ -138,6 +138,18 @@ function savePersisted() {
       /* ignore */
     }
   }
+  scheduleAccountMirror();
+}
+
+let accountMirrorTimer = null;
+function scheduleAccountMirror() {
+  clearTimeout(accountMirrorTimer);
+  accountMirrorTimer = setTimeout(() => {
+    if (typeof RP === "undefined" || typeof RP.mirrorIfSignedIn !== "function") return;
+    const sport = primarySportId();
+    const level = (profileSports().find((s) => s.id === sport)?.level || "").trim();
+    RP.mirrorIfSignedIn(state.profile?.displayName, sport, level || null);
+  }, 800);
 }
 
 let saveTimer = null;
@@ -253,6 +265,33 @@ function sportMeta(id) {
 
 function profileSports() {
   return state.profile?.sports || [];
+}
+
+/** Adult belt order used only to decide "next to you". Self-declared text, not a ranking. */
+const BELT_RUNGS = ["white", "blue", "purple", "brown", "black"];
+
+function myLevel(sportId) {
+  const row = profileSports().find((s) => s.id === sportId);
+  return String(row?.level || "").trim();
+}
+
+function levelsNear(mine, theirs) {
+  const aText = String(mine || "").toLowerCase();
+  const bText = String(theirs || "").toLowerCase();
+  const rung = (text) => {
+    let found = -1;
+    BELT_RUNGS.forEach((name, i) => {
+      if (text.includes(name)) found = i;
+    });
+    return found;
+  };
+  const a = rung(aText);
+  const b = rung(bText);
+  if (a >= 0 && b >= 0) return Math.abs(a - b) <= 1;
+  const aNum = aText.match(/[\d.]+/);
+  const bNum = bText.match(/[\d.]+/);
+  if (aNum && bNum) return Math.abs(parseFloat(aNum[0]) - parseFloat(bNum[0])) <= 1;
+  return Boolean(aText && bText && aText === bText);
 }
 
 function hasProfileSports() {
@@ -784,6 +823,10 @@ function renderLiveMap(list) {
  * Load real venues near the user. Fake GYMS are never used.
  */
 async function loadLivePlaces(opts = {}) {
+  if (typeof betaAcked === "function" && !betaAcked()) {
+    state.live.loading = false;
+    return;
+  }
   if (typeof PlacesLive === "undefined") {
     state.live.error = "Couldn’t load places. Tap Refresh app, then try again.";
     state.live.loading = false;
@@ -1086,10 +1129,12 @@ function placeToolsHTML(g) {
   }
   const maps = g.mapsUrl || mapsSearchUrl(g.name, g.address);
   if (maps) bits.push(`<a class="place-tool" href="${escapeHtml(maps)}" target="_blank" rel="noopener">Map</a>`);
-  const dest =
-    g.lat != null && g.lng != null
+  const place = [g.name, g.address].filter(Boolean).join(" ");
+  const dest = place
+    ? encodeURIComponent(place)
+    : g.lat != null && g.lng != null
       ? `${g.lat},${g.lng}`
-      : encodeURIComponent([g.name, g.address].filter(Boolean).join(" "));
+      : "";
   if (dest) {
     bits.push(
       `<a class="place-tool" href="https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving" target="_blank" rel="noopener">Go</a>`
@@ -1893,16 +1938,183 @@ function openGymDetail(id, opts = {}) {
   window.MatBoard?.mount(g);
 }
 
-// Interim, honest state: real partner matching is Match (LEVELS-AND-MATCH.md section 2),
-// not built yet. Rather than a fake matched-partner list, point at where real people already are.
-function renderPartners() {
+function partnerSports() {
+  const withLevel = profileSports().filter((s) => String(s.level || "").trim());
+  const focus = focusId();
+  if (focus) return withLevel.filter((s) => s.id === focus);
+  return withLevel;
+}
+
+function partnerDay(iso) {
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+/**
+ * Adults who tapped I'm in at a place already on this phone, within one level of the athlete.
+ * Kids rows are dropped. Nobody is invented.
+ */
+async function loadPartnerRows(places, sports) {
+  const sportIds = new Set(sports.map((s) => s.id));
+  const levelBySport = new Map(sports.map((s) => [s.id, String(s.level).trim()]));
+  const gymName = new Map(places.map((p) => [p.id, p.name]));
+  const gymIds = places.map((p) => p.id).filter(Boolean).slice(0, 40);
+  const people = [];
+  let failed = false;
+  const db = typeof RP !== "undefined" ? RP.db : null;
+  if (db && gymIds.length) {
+    const { data: slots, error } = await db
+      .from("slots")
+      .select("id, gym_id, sport, audience, kind, removed_at")
+      .in("gym_id", gymIds)
+      .eq("audience", "adult")
+      .is("removed_at", null);
+    if (error) failed = true;
+    else if (slots?.length) {
+      const adult = slots.filter((s) => sportIds.has(s.sport) && s.kind !== "kids" && s.audience === "adult");
+      const slotById = new Map(adult.map((s) => [s.id, s]));
+      const ids = [...slotById.keys()];
+      if (ids.length) {
+        const today = new Date().toISOString().slice(0, 10);
+        const { data: intents, error: intentError } = await db
+          .from("intents")
+          .select("user_id, slot_id, on_date, child_id")
+          .in("slot_id", ids)
+          .gte("on_date", today)
+          .is("child_id", null)
+          .limit(200);
+        if (intentError) failed = true;
+        else if (intents?.length) {
+          const userIds = [...new Set(intents.map((i) => i.user_id).filter(Boolean))];
+          const { data: profiles } = await db
+            .from("profiles")
+            .select("id, display_name, belt, belt_verified")
+            .in("id", userIds);
+          const byId = new Map((profiles || []).map((p) => [p.id, p]));
+          let selfId = null;
+          if (typeof RP.existingUser === "function") {
+            const me = await RP.existingUser();
+            selfId = me?.id || null;
+          }
+          for (const intent of intents) {
+            if (intent.child_id || intent.user_id === selfId) continue;
+            const slot = slotById.get(intent.slot_id);
+            const person = byId.get(intent.user_id);
+            if (!slot || !person?.display_name) continue;
+            if (!levelsNear(levelBySport.get(slot.sport) || "", person.belt || "")) continue;
+            people.push({
+              userId: person.id,
+              name: person.display_name,
+              belt: person.belt || "",
+              verified: !!person.belt_verified,
+              sport: slot.sport,
+              gymId: slot.gym_id,
+              gymName: gymName.get(slot.gym_id) || "That gym",
+              onDate: intent.on_date,
+            });
+          }
+        }
+      }
+    }
+  }
+  const best = new Map();
+  for (const person of people) {
+    const key = `${person.userId}|${person.gymId}`;
+    const prev = best.get(key);
+    if (!prev || String(person.onDate) < String(prev.onDate)) best.set(key, person);
+  }
+  return { rows: [...best.values()], failed };
+}
+
+let partnersToken = 0;
+async function renderPartners() {
+  const token = ++partnersToken;
   const el = $("#partnerList");
   if (!el) return;
-  el.innerHTML =
-    sportMarkHTML() +
-    empty("Who's training is on each gym's board.", "Open a gym to see who's here now and tap in.") +
-    `<button type="button" class="btn-match" id="partnersToGyms" style="width:100%;margin-top:10px">Go to Gyms</button>`;
-  $("#partnersToGyms")?.addEventListener("click", () => switchTab("gyms"));
+  if (state.agePool === "teen") {
+    el.innerHTML =
+      sportMarkHTML() +
+      empty("Youth and adults stay separate.", "This phone is set to teen. Adult names are not listed here.");
+    return;
+  }
+  const sports = partnerSports();
+  if (!sports.length) {
+    el.innerHTML =
+      sportMarkHTML() +
+      empty(
+        "Add your level first.",
+        "On Profile, add a sport and the level you train at. People who tap I’m in next to that level show up here."
+      ) +
+      `<button type="button" class="btn-match" id="partnersToProfile" style="width:100%;margin-top:10px">Add a sport</button>`;
+    $("#partnersToProfile")?.addEventListener("click", () => switchTab("profile"));
+    return;
+  }
+  const places = state.live?.places || [];
+  if (!places.length) {
+    el.innerHTML =
+      sportMarkHTML() +
+      empty(
+        "Find places first.",
+        "People next to your level show up here after Gyms has places, and only when they tap I’m in on that board."
+      ) +
+      `<button type="button" class="btn-match" id="partnersToGyms" style="width:100%;margin-top:10px">Go to Gyms</button>`;
+    $("#partnersToGyms")?.addEventListener("click", () => switchTab("gyms"));
+    return;
+  }
+  const levelLine = sports.map((s) => `${sportMeta(s.id)?.short || s.id} ${s.level}`).join(" · ");
+  el.innerHTML = `<p class="muted small">Looking for people next to ${escapeHtml(levelLine)}…</p>`;
+  let rows = [];
+  let failed = false;
+  try {
+    const loaded = await loadPartnerRows(places, sports);
+    rows = loaded.rows;
+    failed = loaded.failed;
+  } catch (e) {
+    console.warn("partners", e);
+    rows = [];
+    failed = true;
+  }
+  if (token !== partnersToken) return;
+  if (failed && !rows.length) {
+    el.innerHTML =
+      sportMarkHTML() +
+      empty("The board could not be read.", "Open a gym, then come back. People are listed only when the board answers.");
+    return;
+  }
+  if (!rows.length) {
+    el.innerHTML =
+      sportMarkHTML() +
+      empty(
+        "Nobody at your level is in yet.",
+        "When someone taps I’m in at one of these places, and their level is next to yours, they show up here."
+      ) +
+      `<button type="button" class="btn-match" id="partnersToGyms" style="width:100%;margin-top:10px">Go to Gyms</button>`;
+    $("#partnersToGyms")?.addEventListener("click", () => switchTab("gyms"));
+    return;
+  }
+  el.innerHTML = rows
+    .map((person) => {
+      const sport = sportMeta(person.sport)?.short || person.sport;
+      const when = partnerDay(person.onDate);
+      const belt = person.belt
+        ? `${person.belt}${person.verified ? " · verified" : " · self-declared"}`
+        : "level not listed";
+      return `<article class="card">
+        <div class="card-title">${escapeHtml(person.name)}</div>
+        <div class="card-meta">${escapeHtml(sport)} · ${escapeHtml(belt)}</div>
+        <div class="card-meta">${escapeHtml(person.gymName)}${when ? ` · ${escapeHtml(when)}` : ""}</div>
+        <button type="button" class="btn-ghost" data-open-gym="${escapeHtml(person.gymId)}" style="width:100%;margin-top:8px;padding:12px">Open the board</button>
+      </article>`;
+    })
+    .join("");
+  el.querySelectorAll("[data-open-gym]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.openGym;
+      if (findGym(id)) openGymDetail(id);
+      else switchTab("gyms");
+    });
+  });
 }
 
 function forYouFeedItems() {
@@ -2131,10 +2343,24 @@ function renderFeed() {
   });
 }
 
+const GEAR_KEY = "rollphase.gear.v1";
+
+function loadGearNotes() {
+  try {
+    const list = JSON.parse(localStorage.getItem(GEAR_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGearNotes(list) {
+  localStorage.setItem(GEAR_KEY, JSON.stringify(list.slice(-40)));
+}
+
 function renderGear() {
   const focus = focusId();
   const shops = (focus ? SHOPS.filter((s) => s.sports.includes(focus)) : SHOPS).sort((a, b) => a.mi - b.mi);
-  const needs = focus ? NEEDS.filter((n) => n.sport === focus) : NEEDS;
   const shopsEl = $("#gearShops");
   const needsEl = $("#gearNeeds");
   if (!shopsEl) return;
@@ -2157,24 +2383,58 @@ function renderGear() {
       </article>`
           )
           .join("")
-      : empty("No shops nearby yet", "Gear shops for this sport will show here when available.");
+      : empty("No shops listed.", "A shop shows up here only when it is a real listing. Nothing is filled in.");
   } else {
     needsEl?.classList.remove("hidden");
     shopsEl.classList.add("hidden");
-    if (needsEl) {
-      needsEl.innerHTML = needs.length
-        ? needs
-            .map(
-              (n) => `
+    if (!needsEl) return;
+    const notes = loadGearNotes().filter((n) => !focus || !n.sport || n.sport === focus);
+    const cards = notes
+      .map(
+        (n) => `
         <article class="need-card">
-          <div class="card-tags"><span class="tag-pill accent">${n.kind}</span></div>
+          <div class="card-tags"><span class="tag-pill accent">${n.kind === "offer" ? "I have" : "I want"}</span></div>
           <div class="card-title" style="margin-top:8px">${escapeHtml(n.title)}</div>
-          <div class="card-meta">${escapeHtml(n.who)} · ${n.mi} mi</div>
+          <div class="card-meta">On this phone${n.sport ? ` · ${escapeHtml(sportMeta(n.sport)?.short || n.sport)}` : ""}</div>
+          <button type="button" class="btn-ghost" data-gear-remove="${escapeHtml(n.id)}" style="margin-top:8px">Remove</button>
         </article>`
-            )
-            .join("")
-        : empty("No needs yet", "Wants and offers for this sport show up here when athletes post them.");
-    }
+      )
+      .join("");
+    needsEl.innerHTML = `
+      <form id="gearComposer" class="social-field" style="margin-bottom:12px">
+        <label>On this phone
+          <select id="gearKind">
+            <option value="want">I want</option>
+            <option value="offer">I have</option>
+          </select>
+        </label>
+        <input id="gearNoteTitle" type="text" maxlength="80" placeholder="Gi, size A2" />
+        <button type="submit" class="btn-primary" style="width:100%;margin-top:8px;padding:12px">Save on this phone</button>
+        <p class="muted small">Other athletes do not see this. It stays on this phone.</p>
+      </form>
+      ${cards || empty("Nothing saved yet.", "A want or an offer you write is kept here.")}`;
+    needsEl.querySelector("#gearComposer")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const title = needsEl.querySelector("#gearNoteTitle")?.value?.trim();
+      if (!title) return;
+      const kind = needsEl.querySelector("#gearKind")?.value === "offer" ? "offer" : "want";
+      const list = loadGearNotes();
+      list.push({
+        id: `gear_${Date.now()}`,
+        kind,
+        title: title.slice(0, 80),
+        sport: focus || null,
+        at: new Date().toISOString(),
+      });
+      saveGearNotes(list);
+      renderGear();
+    });
+    needsEl.querySelectorAll("[data-gear-remove]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        saveGearNotes(loadGearNotes().filter((n) => n.id !== btn.dataset.gearRemove));
+        renderGear();
+      });
+    });
   }
 }
 
@@ -2581,11 +2841,11 @@ function openProfileSettings(opts = {}) {
     const n = ensureNotify();
     const ps = sportMeta(primarySportId());
     const rows = [
-      ["primarySport", ps ? `First choice: ${ps.short}` : "First-choice sport updates", "Events and news for your main sport"],
-      ["savedGyms", "Saved places", "When a gym you saved posts or hosts something"],
-      ["specials", "Specials & open sessions", "Open mats, free weeks, one-off nights"],
-      ["tournaments", "Tournaments & races", "Registration windows and big dates"],
-      ["liveNearby", "Live nearby", "Who’s training / sessions happening now"],
+      ["primarySport", ps ? `First choice: ${ps.short}` : "First-choice sport", "Feed includes events for this sport"],
+      ["savedGyms", "Saved places", "Feed includes a saved place when it has an update"],
+      ["specials", "Specials and open sessions", "Feed includes open mats and one-off nights"],
+      ["tournaments", "Tournaments and races", "Feed includes registration windows"],
+      ["liveNearby", "Live nearby", "Feed includes sessions that are happening"],
     ];
     notifyHost.innerHTML = rows
       .map(
@@ -2688,6 +2948,20 @@ function bindPhoneSettings() {
   if (hereBox && hereBox.dataset.bound !== "1") {
     hereBox.dataset.bound = "1";
     hereBox.addEventListener("change", () => setShowHere(hereBox.checked));
+  }
+  const privacyBtn = $("#openPrivacyNote");
+  if (privacyBtn && privacyBtn.dataset.bound !== "1") {
+    privacyBtn.dataset.bound = "1";
+    privacyBtn.addEventListener("click", () => {
+      if (typeof openPrivacySheet === "function") openPrivacySheet();
+    });
+  }
+  const deleteBtn = $("#deleteMyData");
+  if (deleteBtn && deleteBtn.dataset.bound !== "1") {
+    deleteBtn.dataset.bound = "1";
+    deleteBtn.addEventListener("click", () => {
+      if (typeof deleteRollphaseData === "function") deleteRollphaseData();
+    });
   }
 }
 
@@ -3116,14 +3390,27 @@ function parseLocationToEntry() {
   return { view: "tab", tab };
 }
 
+/** How many gym pages this visit pushed. A shared link does not count, so Back stays in the app. */
+let gymPushes = 0;
+
 function pushNav(entry) {
   if (state._navSilent) return;
+  if (entry?.view === "gym") gymPushes += 1;
   const url = navUrl(entry);
   try {
     history.pushState({ ...entry, rp: 1 }, "", url);
   } catch {
     /* ignore */
   }
+}
+
+function leaveGym() {
+  if (gymPushes > 0 && history.state?.view === "gym") {
+    gymPushes -= 1;
+    history.back();
+    return;
+  }
+  switchTab("gyms", { historyMode: "replace" });
 }
 
 function replaceNav(entry) {
@@ -3285,11 +3572,7 @@ function goBackInApp() {
     return;
   }
   if ($("#screen-gym-detail")?.classList.contains("active")) {
-    if (history.state?.view === "gym" || (location.hash || "").includes("/gym/")) {
-      history.back();
-    } else {
-      switchTab("gyms", { historyMode: "replace" });
-    }
+    leaveGym();
     return;
   }
   if (document.getElementById("feedbackSheet") || document.getElementById("aboutSheet")) {
@@ -3460,12 +3743,7 @@ function bind() {
 
   $("#gymBack")?.addEventListener("click", (e) => {
     e.preventDefault();
-    // System-like back: pop history when we pushed gym detail
-    if (history.state?.view === "gym" || (location.hash || "").includes("/gym/")) {
-      history.back();
-    } else {
-      switchTab("gyms", { historyMode: "replace" });
-    }
+    leaveGym();
   });
 
   $("#refreshLivePlaces")?.addEventListener("click", () => {
@@ -3589,8 +3867,16 @@ function bind() {
     }
 
     safeRenderAll();
-    // Live places — GPS + last known + city fallback messaging
-    loadLivePlaces({ force: true, regeo: true });
+    // Places wait until the welcome is accepted, so location is not sent before that.
+    if (typeof betaAcked === "function" && !betaAcked()) {
+      window.addEventListener(
+        "rollphase:beta-ready",
+        () => loadLivePlaces({ force: true, regeo: true }),
+        { once: true }
+      );
+    } else {
+      loadLivePlaces({ force: true, regeo: true });
+    }
 
     if (typeof RollPhaseShell !== "undefined") {
       RollPhaseShell.applyMode();
