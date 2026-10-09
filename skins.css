@@ -104,10 +104,14 @@ body.beta-locked .stage {
   line-height: 1.45;
   color: #c5cad6;
 }
-.beta-scroll h2 {
+.beta-scroll h2,
+.beta-scroll h3 {
   font-size: 0.85rem;
   color: #fff;
   margin: 14px 0 6px;
+}
+.beta-scroll p {
+  margin: 0 0 8px;
 }
 .beta-scroll ul {
   padding-left: 1.1rem;

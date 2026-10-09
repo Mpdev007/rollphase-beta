@@ -16,9 +16,9 @@ const state = {
   showHere: true,
   checkedInGym: null,
   sportQuery: "",
-  /** demo: "guest" = no sports on profile; "athlete" = multi-sport profile */
-  mode: "athlete",
-  profile: safeClone(typeof PROFILE_DEFAULT !== "undefined" ? PROFILE_DEFAULT : emptyProfile()),
+  /** guest = look around today; athlete = focus the sports saved on this phone */
+  mode: "guest",
+  profile: emptyProfile(),
   _rendering: false,
   /** Live venues from PlacesLive — never fake stubs */
   live: {
@@ -95,7 +95,13 @@ function loadPersisted() {
     if (saved.agePool === "teen" || saved.agePool === "adult") state.agePool = saved.agePool;
     if (typeof saved.openToTrain === "boolean") state.openToTrain = saved.openToTrain;
     if (typeof saved.showHere === "boolean") state.showHere = saved.showHere;
-    if (saved.focusSport) state.sport = saved.focusSport;
+    if (saved.explore === true) {
+      state.mode = "guest";
+      state.sport = null;
+    } else if (saved.focusSport) {
+      state.mode = "athlete";
+      state.sport = saved.focusSport;
+    }
   } catch {
     /* ignore bad storage */
   }
@@ -109,7 +115,8 @@ function savePersisted() {
       agePool: state.agePool,
       openToTrain: state.openToTrain,
       showHere: state.showHere,
-      focusSport: state.sport || null,
+      explore: state.mode === "guest",
+      focusSport: state.mode === "guest" ? null : state.sport || null,
     };
     delete snap.googlePlacesApiKey;
     localStorage.setItem(PROFILE_KEY, JSON.stringify(snap));
@@ -122,7 +129,8 @@ function savePersisted() {
         agePool: state.agePool,
         openToTrain: state.openToTrain,
         showHere: state.showHere,
-        focusSport: state.sport || null,
+        explore: state.mode === "guest",
+        focusSport: state.mode === "guest" ? null : state.sport || null,
       };
       if (slim.represent) slim.represent = { ...slim.represent, logoDataUrl: null };
       localStorage.setItem(PROFILE_KEY, JSON.stringify(slim));
@@ -214,6 +222,7 @@ function toggleFavorite(gym) {
       sport: focusId() && gym.sports.includes(focusId()) ? focusId() : gym.sports[0],
     });
   }
+  scheduleSave();
 }
 
 function setPrimarySport(sportId) {
@@ -579,14 +588,14 @@ function removeSportFromProfile(sportId) {
 }
 
 function setDemoMode(mode) {
-  state.mode = mode;
-  if (mode === "guest") {
-    state.profile = emptyProfile();
+  state.mode = mode === "guest" ? "guest" : "athlete";
+  if (state.mode === "guest") {
     state.sport = null;
+  } else if (hasProfileSports()) {
+    state.sport = state.profile.primarySportId || profileSports()[0].id;
   } else {
-    state.profile = safeClone(PROFILE_DEFAULT);
-    // Emphasize first choice if set
-    state.sport = state.profile.primarySportId || state.profile.sports[0]?.id || null;
+    state.sport = null;
+    openSportPicker({ addMode: true });
   }
   applySkin(state.sport, { flash: false });
   safeRenderAll();
@@ -1871,7 +1880,8 @@ function openGymDetail(id, opts = {}) {
   $("#followGym")?.addEventListener("click", (e) => {
     const exists = state.profile.following.some((f) => f.name === g.name);
     if (!exists) {
-      state.profile.following.push({ type: "gym", name: g.name, sport: sport || g.sports[0], platform: "instagram" });
+      state.profile.following.push({ type: "gym", name: g.name, sport: sport || g.sports[0] });
+      scheduleSave();
     }
     if (!isFavorite(g.id)) toggleFavorite(g);
     e.target.textContent = "Following ✓";
@@ -2973,6 +2983,7 @@ function renderProfile() {
     socialHost.querySelectorAll("input").forEach((input) => {
       input.addEventListener("change", () => {
         state.profile.social[input.dataset.social] = input.value.trim();
+        scheduleSave();
       });
     });
   }
@@ -2984,15 +2995,16 @@ function renderProfile() {
           .map(
             (f, i) => `
       <span class="follow-chip">
-        ${escapeHtml(f.name)} · ${escapeHtml(f.platform)}
+        ${escapeHtml(f.name)}
         <button type="button" data-unfollow="${i}" aria-label="Unfollow">×</button>
       </span>`
           )
           .join("")
-      : `<p class="muted small">Follow gyms from venue detail — their posts land in Feed.</p>`;
+      : `<p class="muted small">Follow a gym from its page. It stays on this phone.</p>`;
     followHost.querySelectorAll("[data-unfollow]").forEach((btn) => {
       btn.addEventListener("click", () => {
         state.profile.following.splice(+btn.dataset.unfollow, 1);
+        scheduleSave();
         renderProfile();
       });
     });
@@ -3532,7 +3544,9 @@ function bind() {
     applySettings(loadSettings());
     paintTrainToggle();
     // Emphasize first-choice sport when profile has one (still optional to clear)
-    if (state.sport) {
+    if (state.mode === "guest") {
+      state.sport = null;
+    } else if (state.sport) {
       /* kept from this phone */
     } else if (primarySportId()) {
       state.sport = primarySportId();

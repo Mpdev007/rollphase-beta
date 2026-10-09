@@ -286,12 +286,25 @@ function openAboutSheet(opts = {}) {
     <div class="feedback-panel">
       <div class="sheet-handle"></div>
       <h2>About RollPhase</h2>
-      <p class="muted small">Closed beta · early access</p>
-      <div class="beta-scroll" style="max-height:50vh;margin:12px 0">
-        <p><strong>RollPhase</strong> helps you find places to train, people at your level, and a cleaner multi-sport flow — then rate venues so the next athlete knows what to expect.</p>
-        <p>Use one sport or many. Focus when you want; explore when you don’t. Your club colors and crest stay personal to you.</p>
-        <p>This is a closed beta. Features grow with the community. Train smart, be respectful, and tell us what matters with <strong>Feedback</strong>.</p>
-        <p class="muted small">If an update is available, you’ll see a prompt to restart. You can also refresh from Settings.</p>
+      <p class="muted small">What it does, and how a session works</p>
+      <div class="beta-scroll" style="max-height:58vh;margin:12px 0">
+        <h3>What it does</h3>
+        <p>Rollphase finds a place to train, shows who is on that mat, and lets you share the session. It covers many sports. Focus one when you want. Leave it open when you do not.</p>
+        <h3>How it works</h3>
+        <p><strong>1. Sport.</strong> Pick one on Home, or tap Just exploring to look at every sport today. My sports uses only the sports you saved. Nothing is filled in for you.</p>
+        <p><strong>2. Places.</strong> Gyms lists real places near you, on a map and in a list. Call, the website, the map, and directions show up when that place lists them.</p>
+        <p><strong>3. The board.</strong> Open a gym for the timetable and who is here. I’m here puts you on that board. Turn Show in “here now” off in Settings when you want to stay off it.</p>
+        <p><strong>4. Share.</strong> Your profile, a gym, and a session each have a code. A phone without Rollphase installs it. A phone that already has it opens that place.</p>
+        <p><strong>5. Calendars.</strong> Feed links to the official calendar for the sport. Rollphase does not invent events.</p>
+        <h3>Your assistant</h3>
+        <p>In Settings, Muse runs Rollphase from your own Muse account after the app premium. A Gemini key, yours, writes a short note about a place and stays on this phone. Both keeps those jobs separate. Rollphase does not pay for either.</p>
+        <h3>On this phone</h3>
+        <p>Your name, sports, saved places, and keys stay on this phone. Open to train is your choice. Youth and adults stay in separate pools. Your club name and crest are yours.</p>
+        <h3>Still growing</h3>
+        <p>Partners are the people already on a gym board. A match by level is not in the app yet. Gear shops and wants show up when athletes post them.</p>
+        <h3>The agreement</h3>
+        <p>This is a closed beta. Meeting people and visiting gyms is your own judgment. Use only names and logos you have the right to use. Rollphase is not a gym and not a federation. Feedback is in the top bar.</p>
+        <p class="muted small">Places come from the public map. When an update is ready, a prompt asks you to restart. Refresh app is also in Settings.</p>
       </div>
       <p class="muted small" id="appBuildLabelAbout" style="margin:8px 0 12px"></p>
       <button type="button" class="btn-primary" id="aboutGetLatest" style="width:100%;padding:12px">Refresh app</button>
@@ -324,7 +337,7 @@ function openAboutSheet(opts = {}) {
     if (typeof UpdateCheck !== "undefined") {
       const result = await UpdateCheck.check({ forceBanner: true });
       if (result === "current" && !document.getElementById("updateBanner")) {
-        alert("You’re on the latest version.");
+        alert("You’re up to date.");
       }
       if (result === "update") betaCloseOverlay(sheet);
     } else {
@@ -332,7 +345,13 @@ function openAboutSheet(opts = {}) {
     }
   });
   sheet.querySelector("#aboutReset")?.addEventListener("click", () => {
+    if (!window.confirm("Show the welcome again? Your name, sports, and saved places stay on this phone.")) return;
     localStorage.removeItem(BETA.storageKey);
+    try {
+      history.replaceState({ rp: 1, view: "tab", tab: "home" }, "", "#/home");
+    } catch {
+      /* ignore */
+    }
     location.reload();
   });
 }
