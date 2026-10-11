@@ -6,7 +6,6 @@
 const DEFAULT_GYM_FILTERS = [
   { id: "all", label: "All" },
   { id: "open", label: "Open now" },
-  { id: "classes", label: "Classes" },
   { id: "near", label: "≤ 5 mi" },
 ];
 const DEFAULT_PARTNER_FILTERS = [
@@ -76,8 +75,7 @@ const SPORTS = [
     gymFilters: [
       { id: "all", label: "All" },
       { id: "open", label: "Open now" },
-      { id: "openmat", label: "Open mat" },
-      { id: "gi", label: "Gi / No-Gi" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     partnerFilters: [
       { id: "all", label: "All belts" },
@@ -110,8 +108,7 @@ const SPORTS = [
     gymFilters: [
       { id: "all", label: "All" },
       { id: "open", label: "Open now" },
-      { id: "cage", label: "Has cage" },
-      { id: "spar", label: "Spar night" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     homeGymTitle: "Fight gyms",
     homePartnerTitle: "Spar partners",
@@ -132,8 +129,7 @@ const SPORTS = [
     gymFilters: [
       { id: "all", label: "All" },
       { id: "open", label: "Open now" },
-      { id: "ring", label: "Has ring" },
-      { id: "bags", label: "Heavy bags" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     homeGymTitle: "Ring gyms",
     homePartnerTitle: "Pad partners",
@@ -164,8 +160,7 @@ const SPORTS = [
     gymFilters: [
       { id: "all", label: "All" },
       { id: "open", label: "Open now" },
-      { id: "pads", label: "Pad class" },
-      { id: "fightteam", label: "Fight team" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     homeGymTitle: "Camps near you",
     homePartnerTitle: "Pad partners",
@@ -213,8 +208,8 @@ const SPORTS = [
     gymFilters: [
       { id: "all", label: "All" },
       { id: "open", label: "Open now" },
-      { id: "platform", label: "Platforms" },
-      { id: "24h", label: "24h" },
+      { id: "24h", label: "24h", trait: "hours24" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     homeGymTitle: "Strength floors",
     homePartnerTitle: "Session partners",
@@ -243,8 +238,7 @@ const SPORTS = [
     gymFilters: [
       { id: "all", label: "All" },
       { id: "open", label: "Open now" },
-      { id: "sled", label: "Sled / stations" },
-      { id: "classes", label: "HYROX class" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     homeGymTitle: "Training centers",
     homePartnerTitle: "Doubles partners",
@@ -264,9 +258,9 @@ const SPORTS = [
     depth: "full",
     gymFilters: [
       { id: "all", label: "All" },
-      { id: "open", label: "Open play" },
-      { id: "indoor", label: "Indoor" },
-      { id: "tournament", label: "Hosts events" },
+      { id: "open", label: "Open now" },
+      { id: "indoor", label: "Indoor", trait: "indoor" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     partnerFilters: [
       { id: "all", label: "All DUPR" },
@@ -341,8 +335,7 @@ const SPORTS = [
     gymFilters: [
       { id: "all", label: "All" },
       { id: "open", label: "Open now" },
-      { id: "reformer", label: "Reformer" },
-      { id: "classes", label: "Classes today" },
+      { id: "near", label: "≤ 5 mi" },
     ],
     homeGymTitle: "Studios near you",
     homePartnerTitle: "Practice buddies",
@@ -417,18 +410,129 @@ const SPORTS = [
 const CALENDARS = {
   bjj: { label: "IBJJF calendar", href: "https://ibjjf.com/events/calendar" },
   mma: { label: "UFC schedule", href: "https://www.ufc.com/events" },
-  kickboxing: { label: "WAKO", href: "https://www.wako.sport/" },
+  kickboxing: { label: "WAKO events", href: "https://www.wako.sport/events" },
   judo: { label: "IJF calendar", href: "https://www.ijf.org/calendar" },
   crossfit: { label: "CrossFit Games calendar", href: "https://games.crossfit.com/calendar" },
   hyrox: { label: "Find a HYROX race", href: "https://www.hyrox.com/find-my-race/" },
   pickleball: { label: "Pickleball tournaments", href: "https://pickleballtournaments.com/" },
-  soccer: { label: "U.S. Soccer calendar", href: "https://www.ussoccer.com/calendar" },
+  soccer: { label: "U.S. Soccer schedule", href: "https://www.ussoccer.com/all-matches" },
   volleyball: { label: "USA Volleyball events", href: "https://usavolleyball.org/events/" },
-  cycling: { label: "USA Cycling events", href: "https://www.usacycling.org/events" },
-  climbing: { label: "IFSC calendar", href: "https://www.ifsc-climbing.org/calendar" },
+  cycling: { label: "USA Cycling events", href: "https://usacycling.sport80.com/pub/e_locator/events/find?from_date=today" },
+  climbing: { label: "World Climbing calendar", href: "https://www.worldclimbing.com/calendar" },
+  basketball: { label: "FIBA 3x3 events", href: "https://play.fiba3x3.com/events" },
+};
+const MORE_CALENDARS = {
+  boxing: { label: "USA Boxing events", href: "https://usaboxing.webpoint.us/wp15/Events2/Events-wp.php?evt_CategoryID=4,1,2,11,10" },
+  wrestling: { label: "USA Wrestling events", href: "https://usawrestlingevents.com/events" },
+  muaythai: { label: "IFMA events", href: "https://muaythai.sport/events/" },
+  weightlifting: { label: "USA Weightlifting", href: "https://www.usaweightlifting.org/events" },
+  tennis: { label: "Find a USTA event", href: "https://www.usta.com/en/home/play.html" },
+  running: { label: "USATF events", href: "https://www.usatf.org/events" },
+  swimming: { label: "U.S. Masters meets", href: "https://www.usms.org/events" },
+  yoga: { label: "Find a Yoga Alliance teacher", href: "https://yogaalliance.org/find-a-yoga-teacher/" },
+  pilates: {
+    label: "NPCP workshops",
+    href: "https://nationalpilatescertificationprogram.org/NPCP/NPCP/Continuing_Education/CEC-Calendar.aspx",
+  },
+};
+const RATING_DOOR = {
+  pickleball: { label: "Look up a DUPR", href: "https://www.dupr.com/" },
+};
+const SPORT_LEVELS = {
+  bjj: ["White belt", "Blue belt", "Purple belt", "Brown belt", "Black belt"],
+  mma: ["Novice", "Amateur", "Pro"],
+  boxing: ["Novice", "Open", "Amateur", "Elite"],
+  wrestling: ["Beginner", "Junior", "Senior", "Open"],
+  muaythai: ["Beginner", "Intermediate", "Fighter", "Champion"],
+  kickboxing: ["Beginner", "Intermediate", "Amateur", "Pro"],
+  judo: ["White belt", "Yellow belt", "Orange belt", "Green belt", "Blue belt", "Brown belt", "Black belt"],
+  weightlifting: ["Beginner", "Local", "Regional", "National"],
+  crossfit: ["Scaled", "RX", "Elite"],
+  hyrox: ["Open", "Pro", "Elite"],
+  pickleball: ["2.5", "3.0", "3.5", "4.0", "4.5", "5.0"],
+  tennis: ["NTRP 2.5", "NTRP 3.0", "NTRP 3.5", "NTRP 4.0", "NTRP 4.5", "NTRP 5.0"],
+  basketball: ["Rec", "League", "Competitive"],
+  soccer: ["Rec", "League", "Competitive"],
+  volleyball: ["Rec", "BB", "A", "AA", "Open"],
+  pilates: ["Beginner", "Intermediate", "Advanced"],
+  yoga: ["Beginner", "Intermediate", "Advanced"],
+  running: ["Easy", "Tempo", "Race"],
+  cycling: ["Social", "Sport", "Race"],
+  climbing: ["V0–V2", "V3–V4", "V5–V6", "V7–V8", "V9+"],
+  swimming: ["Rec", "Fitness", "Masters", "Competitive"],
+};
+const LEVEL_MATCH_LABEL = {
+  bjj: "My belt ±1",
+  judo: "My belt ±1",
+  pickleball: "My DUPR ±0.5",
+  tennis: "My NTRP",
+  running: "My pace",
+  climbing: "My grade",
+  swimming: "My lane group",
+  hyrox: "My division",
+  crossfit: "My scale",
+  weightlifting: "My meet level",
+};
+const GENERIC_FACE = {
+  gymsTitle: "Venues",
+  partnersTitle: "Partners",
+  gearTitle: "Gear",
+  homeEventTitle: "Upcoming",
+  feedTitle: "Feed",
+};
+const SPORT_FACE = {
+  mma: { partnersTitle: "Sparring partners", homeEventTitle: "Fight-night cards", feedTitle: "Fight cards" },
+  boxing: { partnersTitle: "Pad partners", homeEventTitle: "Amateur shows", feedTitle: "Shows" },
+  wrestling: { gymsTitle: "Wrestling rooms", partnersTitle: "Live partners", gearTitle: "Headgear", homeEventTitle: "Opens and duals", feedTitle: "Wrestling" },
+  kickboxing: { gymsTitle: "Strike gyms", partnersTitle: "Spar partners", gearTitle: "Gloves and shins", homeEventTitle: "Amateur cards", feedTitle: "Cards" },
+  judo: { partnersTitle: "Randori partners", gearTitle: "Gi and belt", feedTitle: "Shiai" },
+  weightlifting: { gymsTitle: "Platforms", partnersTitle: "Session partners", gearTitle: "Shoes and belt", homeEventTitle: "Meets", feedTitle: "Meets" },
+  crossfit: { gymsTitle: "Boxes", partnersTitle: "WOD partners", gearTitle: "Training kit", homeEventTitle: "The Open", feedTitle: "WODs" },
+  tennis: { gymsTitle: "Clubs and courts", partnersTitle: "Hitting partners", gearTitle: "Racquets", feedTitle: "Ladders" },
+  basketball: { gymsTitle: "Courts", partnersTitle: "Run partners", gearTitle: "Court shoes", homeEventTitle: "Runs and leagues", feedTitle: "Runs" },
+  soccer: { gymsTitle: "Fields and courts", partnersTitle: "Pick-up partners", gearTitle: "Cleats", homeEventTitle: "League nights", feedTitle: "Fixtures" },
+  volleyball: { gymsTitle: "Gyms and beaches", partnersTitle: "Pairs", gearTitle: "Knee pads", homeEventTitle: "Opens and tournaments", feedTitle: "Opens" },
+  yoga: { gymsTitle: "Studios", partnersTitle: "Practice buddies", gearTitle: "Mat", homeEventTitle: "Teachers", feedTitle: "Classes" },
+  running: { gymsTitle: "Clubs and tracks", partnersTitle: "Run partners", gearTitle: "Shoes", homeEventTitle: "Races", feedTitle: "Runs" },
+  cycling: { gymsTitle: "Shops and clubs", partnersTitle: "Ride partners", gearTitle: "Helmet and shoes", homeEventTitle: "Group rides", feedTitle: "Rides" },
+  climbing: { gymsTitle: "Walls", partnersTitle: "Belay partners", gearTitle: "Shoes and chalk", homeEventTitle: "Comps", feedTitle: "Sets" },
+  swimming: { gymsTitle: "Pools", partnersTitle: "Lane partners", gearTitle: "Goggles", homeEventTitle: "Meets", feedTitle: "Meets" },
+};
+const NAME_FILTERS = {
+  crossfit: { id: "24h", label: "24h", trait: "hours24" },
+  tennis: { id: "club", label: "Club", trait: "club" },
+  basketball: { id: "indoor", label: "Indoor", trait: "indoor" },
+  soccer: { id: "futsal", label: "Futsal", trait: "futsal" },
+  volleyball: { id: "beach", label: "Beach", trait: "beach" },
+  yoga: { id: "hot", label: "Hot", match: "\\bhot\\b" },
+  running: { id: "track", label: "Track", trait: "track" },
+  cycling: { id: "shop", label: "Bike shop", trait: "shop" },
+  climbing: { id: "boulder", label: "Bouldering", trait: "boulder" },
+  swimming: { id: "indoor", label: "Indoor", trait: "indoor" },
 };
 SPORTS.forEach((s) => {
   if (CALENDARS[s.id]) s.calendar = CALENDARS[s.id];
+  else if (MORE_CALENDARS[s.id]) s.calendar = MORE_CALENDARS[s.id];
+  if (RATING_DOOR[s.id]) s.resources = [RATING_DOOR[s.id]];
+  if (SPORT_LEVELS[s.id]) s.levels = SPORT_LEVELS[s.id];
+  const face = SPORT_FACE[s.id];
+  if (face) {
+    Object.keys(face).forEach((key) => {
+      if (!GENERIC_FACE[key] || s[key] === GENERIC_FACE[key]) s[key] = face[key];
+    });
+  }
+  const extra = NAME_FILTERS[s.id];
+  if (extra && !(s.gymFilters || []).some((f) => f.id === extra.id)) {
+    const filters = (s.gymFilters || []).slice();
+    const at = filters.findIndex((f) => f.id === "near" || f.id === "classes");
+    filters.splice(at < 0 ? filters.length : at, 0, extra);
+    s.gymFilters = filters;
+  }
+  if (s.levels && LEVEL_MATCH_LABEL[s.id]) {
+    s.partnerFilters = (s.partnerFilters || []).map((f) =>
+      f.id === "match" ? { ...f, label: LEVEL_MATCH_LABEL[s.id] } : f
+    );
+  }
 });
 
 /** Live venues only. Never use fake gyms. */

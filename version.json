@@ -1,6 +1,6 @@
 {
-  "version": "0.7.0",
-  "buildId": "20261009-1340-7dfccb4",
-  "builtAt": "2026-10-09T13:40:37.502Z",
-  "message": "Home follows the sport you chose. The map lists only that sport."
+  "version": "0.8.0",
+  "buildId": "20261011-0315-0ea1ea1",
+  "builtAt": "2026-10-11T03:15:27.800Z",
+  "message": "The map finds places for your sport. Filters match real places, and each sport opens its official calendar."
 }

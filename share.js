@@ -20,6 +20,22 @@ const RollShare = (() => {
     "usacycling.org",
     "ifsc-climbing.org",
     "smoothcomp.com",
+    "usaboxingeducation.org",
+    "uww.org",
+    "muaythai.sport",
+    "usaweightlifting.org",
+    "usta.com",
+    "usatf.org",
+    "usaswimming.org",
+    "yogaalliance.org",
+    "nationalpilatescertificationprogram.org",
+    "dupr.com",
+    "worldclimbing.com",
+    "usacycling.sport80.com",
+    "usaboxing.webpoint.us",
+    "usawrestlingevents.com",
+    "usms.org",
+    "play.fiba3x3.com",
   ]);
 
   let overlay = null;

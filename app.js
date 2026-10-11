@@ -33,6 +33,7 @@ const state = {
     accuracy: null,
     lastSport: undefined,
     lastFetchedAt: null,
+    seq: 0,
   },
 };
 
@@ -55,6 +56,21 @@ function applySettings(s) {
   const text = s?.text === "sm" || s?.text === "lg" ? s.text : "md";
   document.documentElement.dataset.text = text;
   if (window.IconPacks) IconPacks.apply({ ...s, iconHue: resolvedIconHue(s) });
+  refreshSportArt();
+}
+
+function sportArt(s) {
+  if (!s) return "assets/logo.jpg";
+  if (s.id && loadSettings().iconPack === "studio") return "assets/sports/studio/" + s.id + ".png?v=2";
+  return s.icon || "assets/logo.jpg";
+}
+
+function refreshSportArt() {
+  if (typeof state === "undefined" || !state.sport || typeof sportMeta !== "function") return;
+  const s = sportMeta(state.sport);
+  const src = sportArt(s);
+  if ($("#sportChipIcon") && s) $("#sportChipIcon").src = src;
+  if ($("#heroIcon") && s) $("#heroIcon").src = src;
 }
 
 function saveSettings(partial) {
@@ -275,9 +291,27 @@ function myLevel(sportId) {
   return String(row?.level || "").trim();
 }
 
-function levelsNear(mine, theirs) {
+function levelsNear(mine, theirs, sportId) {
   const aText = String(mine || "").toLowerCase();
   const bText = String(theirs || "").toLowerCase();
+  const ladder = sportMeta(sportId)?.levels || [];
+  const onLadder = (text) => {
+    let best = -1;
+    let bestLen = 0;
+    ladder.forEach((step, i) => {
+      const token = String(step).toLowerCase();
+      if (token && (text === token || (token.length >= 3 && text.includes(token))) && token.length > bestLen) {
+        best = i;
+        bestLen = token.length;
+      }
+    });
+    return best;
+  };
+  if (ladder.length) {
+    const la = onLadder(aText);
+    const lb = onLadder(bText);
+    if (la >= 0 && lb >= 0) return Math.abs(la - lb) <= 1;
+  }
   const rung = (text) => {
     let found = -1;
     BELT_RUNGS.forEach((name, i) => {
@@ -332,8 +366,7 @@ function currentCity() {
 }
 
 function eventSearchLink(sport) {
-  const city = currentCity();
-  if (!sport || !city) return null;
+  if (!sport) return null;
   const terms = {
     bjj: "bjj",
     judo: "judo",
@@ -344,9 +377,13 @@ function eventSearchLink(sport) {
   };
   const term = terms[sport.id];
   if (!term) return null;
+  const city = currentCity();
+  const href = city
+    ? `https://smoothcomp.com/en/events/upcoming?location=${encodeURIComponent(city)}&search=${encodeURIComponent(term)}`
+    : `https://smoothcomp.com/en/events/upcoming?search=${encodeURIComponent(term)}`;
   return {
-    label: `${sport.short} events in ${city}`,
-    href: `https://smoothcomp.com/en/events/upcoming?location=${encodeURIComponent(city)}&search=${encodeURIComponent(term)}`,
+    label: city ? `${sport.short} events in ${city}` : `Upcoming ${sport.short} events`,
+    href,
   };
 }
 
@@ -357,6 +394,9 @@ function calendarHTML(sport) {
   const local = eventSearchLink(s);
   if (local) links.push(local);
   if (s.calendar?.href && s.calendar.href !== local?.href) links.push(s.calendar);
+  (s.resources || []).forEach((link) => {
+    if (link?.href && !links.some((have) => have.href === link.href)) links.push(link);
+  });
   return links
     .map(
       (link) =>
@@ -614,7 +654,7 @@ function applySkin(sportId, { flash = true } = {}) {
     root.setAttribute("data-sport", sportId);
     $("#sportChip")?.classList.remove("explore-mode");
     if ($("#sportChipIcon")) {
-      $("#sportChipIcon").src = s.icon;
+      $("#sportChipIcon").src = sportArt(s);
       $("#sportChipIcon").style.display = "";
     }
     if ($("#sportLabel")) $("#sportLabel").textContent = s.short;
@@ -622,7 +662,7 @@ function applySkin(sportId, { flash = true } = {}) {
     if ($("#heroKicker")) $("#heroKicker").textContent = "Your sport";
     if ($("#heroTitle")) $("#heroTitle").textContent = s.name;
     if ($("#heroBlurb")) $("#heroBlurb").textContent = s.blurb;
-    if ($("#heroIcon")) $("#heroIcon").src = s.icon;
+    if ($("#heroIcon")) $("#heroIcon").src = sportArt(s);
     if ($("#gymsModuleTitle")) $("#gymsModuleTitle").textContent = s.homeGymTitle;
     if ($("#partnersModuleTitle")) $("#partnersModuleTitle").textContent = s.homePartnerTitle;
     if ($("#eventsModuleTitle")) $("#eventsModuleTitle").textContent = s.homeEventTitle;
@@ -857,8 +897,10 @@ function renderLiveMap(list) {
     liveMapMarkers.push(you);
     bounds.push([state.live.lat, state.live.lng]);
   }
+  let venues = 0;
   list.forEach((g) => {
     if (g.lat == null || g.lng == null) return;
+    venues += 1;
     const m = L.marker([g.lat, g.lng]).addTo(map);
     const contact = [
       g.phone ? `☎ ${g.phone}` : null,
@@ -883,7 +925,7 @@ function renderLiveMap(list) {
     liveMapMarkers.push(m);
     bounds.push([g.lat, g.lng]);
   });
-  if (bounds.length) {
+  if (venues) {
     try {
       map.fitBounds(bounds, { padding: [36, 36], maxZoom: 14 });
     } catch {
@@ -918,6 +960,7 @@ async function loadLivePlaces(opts = {}) {
     !opts.lat;
   if (fresh) return;
 
+  const seq = (state.live.seq = (state.live.seq || 0) + 1);
   state.live.loading = true;
   state.live.error = null;
   updateLiveStatusBar();
@@ -993,13 +1036,14 @@ async function loadLivePlaces(opts = {}) {
 
     const radiusM =
       (typeof PlacesLive.config === "function" && PlacesLive.config().defaultRadiusM) || 12000;
-    const { provider, places, sources } = await PlacesLive.fetchNearby({
+    const { provider, places, sources, warning } = await PlacesLive.fetchNearby({
       lat: state.live.lat,
       lng: state.live.lng,
       radiusM,
       sportId: sport || null,
       label: state.live.label || ($("#citySearchInput")?.value || "").trim(),
     });
+    if (seq !== state.live.seq) return;
     state.live.places = places;
     state.live.provider = provider;
     state.live.sources = sources || [provider];
@@ -1010,10 +1054,13 @@ async function loadLivePlaces(opts = {}) {
       state.live.error = name
         ? `No ${name} places in this area. Try another city.`
         : "No venues found in this radius — try a wider city search.";
-    } else if (!state.live.error || !/permission|GPS|secure|blocked/i.test(state.live.error)) {
+    } else if (warning && !(state.live.error && /permission|GPS|secure|blocked|approximate/i.test(state.live.error))) {
+      state.live.error = warning;
+    } else if (!state.live.error || !/permission|GPS|secure|blocked|approximate/i.test(state.live.error)) {
       state.live.error = null;
     }
   } catch (e) {
+    if (seq !== state.live.seq) return;
     console.warn("loadLivePlaces", e);
     const code = e && e.code;
     if (e && e.secure === false) {
@@ -1033,6 +1080,7 @@ async function loadLivePlaces(opts = {}) {
         "Couldn’t load venues. Check your connection and try Refresh.";
     }
   } finally {
+    if (seq !== state.live.seq) return;
     state.live.loading = false;
     updateLiveStatusBar();
     safeRenderAll();
@@ -1117,7 +1165,7 @@ function updateLiveStatusBar() {
     const where =
       L.label ||
       (L.lat != null ? `${L.lat.toFixed(3)}, ${L.lng.toFixed(3)}` : "your area");
-    const n = L.places.length;
+    const n = filterGyms(gymsForSport()).length;
     const word = n === 1 ? "place" : "places";
     const count = sportName ? `${n} ${sportName} ${word}` : `${n} ${word}`;
     el.innerHTML = `<span class="live-dot"></span> <strong>${escapeHtml(count)}</strong> · ${escapeHtml(
@@ -1128,44 +1176,49 @@ function updateLiveStatusBar() {
   }
 }
 
+function placeBlob(g, sport) {
+  const tags = sport ? (g.tags && g.tags[sport]) || [] : Object.values(g.tags || {}).flat();
+  return [g.name, g.address, g.hours, ...(g.amenities || []), ...tags].filter(Boolean).join(" ");
+}
+
 function filterGyms(list) {
   const f = state.gymFilter;
   const sport = focusId();
-  const am = (g) => g.amenities || [];
-  const tagsFor = (g) => (sport ? g.tags?.[sport] || [] : Object.values(g.tags || {}).flat());
+  const spec = (sportMeta(sport)?.gymFilters || []).find((x) => x.id === f);
+  const blob = (g) => placeBlob(g, sport);
+  if (spec && spec.trait) return list.filter((g) => g.traits && g.traits[spec.trait]);
+  if (spec && spec.match) {
+    try {
+      const re = new RegExp(spec.match, "i");
+      return list.filter((g) => re.test(blob(g)));
+    } catch {
+      return list;
+    }
+  }
   if (f === "all" || f === "near") {
     return f === "near" ? list.filter((g) => g.mi <= 5) : list;
   }
   if (f === "open") return list.filter((g) => g.open === true);
   if (f === "classes") {
-    // Live data rarely has class schedules — keep filter soft (phone/website presence)
     return list.filter((g) => g.website || g.phone || Object.values(g.next || {}).some(Boolean));
   }
-  const tagHit = (re) => list.filter((g) => tagsFor(g).some((t) => re.test(t)));
-  if (f === "openmat") return tagHit(/open mat|open play/i);
-  if (f === "gi") return tagHit(/gi|no-gi/i);
-  if (f === "cage")
-    return list.filter((g) => am(g).includes("cage") || tagsFor(g).some((t) => /cage/i.test(t)));
-  if (f === "spar") return tagHit(/spar/i);
-  if (f === "ring") return list.filter((g) => am(g).includes("ring"));
-  if (f === "bags") return list.filter((g) => am(g).includes("bags"));
-  if (f === "platform") return list.filter((g) => am(g).includes("platforms"));
+  const named = (re) => list.filter((g) => re.test(blob(g)));
+  if (f === "openmat") return named(/open mat|open-mat|open play/i);
+  if (f === "gi") return named(/\bgi\b|no-gi|nogi/i);
+  if (f === "cage") return named(/cage|octagon/i);
+  if (f === "spar") return named(/spar/i);
+  if (f === "ring") return named(/ring/i);
+  if (f === "bags") return named(/bag/i);
+  if (f === "platform") return named(/platform|olympic/i);
   if (f === "24h") return list.filter((g) => /24/i.test(g.hours || ""));
   if (f === "wod") return list.filter((g) => /WOD/i.test((g.next && g.next[sport]) || ""));
-  if (f === "rig") return list.filter((g) => am(g).includes("rig"));
-  if (f === "pads") return tagHit(/pad/i);
-  if (f === "fightteam") return tagHit(/fight team/i);
-  if (f === "sled")
-    return list.filter((g) => am(g).includes("sled") || am(g).includes("stations"));
-  if (f === "indoor")
-    return list.filter(
-      (g) => am(g).includes("indoor") || tagsFor(g).some((t) => /indoor/i.test(t))
-    );
-  if (f === "tournament") return tagHit(/tournament|hosts events|ladder/i);
-  if (f === "reformer")
-    return list.filter(
-      (g) => am(g).includes("reformer") || tagsFor(g).some((t) => /reformer/i.test(t))
-    );
+  if (f === "rig") return named(/rig/i);
+  if (f === "pads") return named(/pad/i);
+  if (f === "fightteam") return named(/fight team|fight-team/i);
+  if (f === "sled") return named(/sled|station/i);
+  if (f === "indoor") return named(/indoor|ymca/i);
+  if (f === "tournament") return named(/tournament|ladder/i);
+  if (f === "reformer") return named(/reformer/i);
   return list;
 }
 
@@ -1367,7 +1420,9 @@ function renderHome() {
   const roi = $("#roiNote");
   if (roi) {
     if (s) {
-      roi.innerHTML = `<strong style="color:var(--text)">${escapeHtml(s.short)} near you</strong><br/>${s.roiSurfaces.map(escapeHtml).join(" · ")}`;
+      roi.innerHTML = `<strong style="color:var(--text)">${escapeHtml(s.short)} near you</strong><br/>${
+        s.calendar?.label ? escapeHtml(s.calendar.label) : "Places for this sport are on the map."
+      }`;
     } else {
       roi.innerHTML = `<strong style="color:var(--text)">Choose a sport</strong><br/>The menu at the top sets the home, the map, and the list.`;
     }
@@ -1423,7 +1478,10 @@ function renderHome() {
   if (homeEvents) {
     const eMod = homeEvents.closest(".module");
     const cal = calendarHTML(sportMeta(focusId()));
-    if (!events.length && !cal) eMod?.classList.add("collapsed");
+    if (!events.length && !cal) {
+      eMod?.classList.add("collapsed");
+      homeEvents.innerHTML = "";
+    }
     else {
       eMod?.classList.remove("collapsed");
       homeEvents.innerHTML = events.length
@@ -1484,7 +1542,7 @@ function renderCheckinBar() {
 function sportMarkHTML() {
   const s = sportMeta(focusId());
   if (!s?.icon) return "";
-  return `<img class="sport-empty" src="${s.icon}" alt="" />`;
+  return `<img class="sport-empty" src="${sportArt(s)}" alt="" />`;
 }
 
 function renderGyms() {
@@ -1511,16 +1569,6 @@ function renderGyms() {
     return;
   }
 
-  if (state.live.error && !list.length) {
-    listEl.innerHTML =
-      empty("Couldn’t load places", state.live.error) +
-      `<button type="button" class="btn-primary" id="retryLivePlaces" style="margin-top:12px">Use my location</button>`;
-    $("#retryLivePlaces")?.addEventListener("click", () =>
-      loadLivePlaces({ force: true, regeo: true })
-    );
-    return;
-  }
-
   if (!list.length && gymsForSport().length && state.gymFilter !== "all" && !state.live.loading) {
     if (mapMode && typeof L !== "undefined") {
       if (!document.getElementById("liveMap")) {
@@ -1536,6 +1584,17 @@ function renderGyms() {
       renderGymFilters();
       renderGyms();
     });
+    return;
+  }
+
+  if (state.live.error && !list.length) {
+    if (mapMode && typeof L !== "undefined") renderLiveMap([]);
+    listEl.innerHTML =
+      empty("Couldn’t load places", state.live.error) +
+      `<button type="button" class="btn-primary" id="retryLivePlaces" style="margin-top:12px">Use my location</button>`;
+    $("#retryLivePlaces")?.addEventListener("click", () =>
+      loadLivePlaces({ force: true, regeo: true })
+    );
     return;
   }
 
@@ -2022,7 +2081,7 @@ async function loadPartnerRows(places, sports) {
             const slot = slotById.get(intent.slot_id);
             const person = byId.get(intent.user_id);
             if (!slot || !person?.display_name) continue;
-            if (!levelsNear(levelBySport.get(slot.sport) || "", person.belt || "")) continue;
+            if (!levelsNear(levelBySport.get(slot.sport) || "", person.belt || "", slot.sport)) continue;
             people.push({
               userId: person.id,
               name: person.display_name,
@@ -3161,12 +3220,24 @@ function renderProfile() {
           .map((x) => {
             const s = sportMeta(x.id);
             const isP = primary === x.id;
+            const levels = s?.levels || [];
+            const levelPick = levels.length
+              ? `<select class="level-select" data-sport-level="${escapeHtml(x.id)}" aria-label="Level for ${escapeHtml(s?.name || x.id)}">
+                  <option value="">Set your level</option>
+                  ${levels
+                    .map(
+                      (lv) =>
+                        `<option value="${escapeHtml(lv)}"${x.level === lv ? " selected" : ""}>${escapeHtml(lv)}</option>`
+                    )
+                    .join("")}
+                </select>`
+              : `<span>${escapeHtml(x.level || "—")}</span>`;
             return `
           <div class="profile-sport-row ${isP ? "is-primary" : ""}">
-            <img src="${s?.icon || "assets/logo.jpg"}" alt="" />
+            <img src="${sportArt(s)}" alt="" />
             <div class="meta">
               <strong>${escapeHtml(s?.name || x.id)}${isP ? " · First choice" : ""}</strong>
-              <span>${escapeHtml(x.level || "—")}${isP ? " · Feed prioritizes this" : ""}</span>
+              ${levelPick}
             </div>
             <button type="button" data-primary-sport="${x.id}">${isP ? "★ Primary" : "Make primary"}</button>
             <button type="button" data-remove-sport="${x.id}">Remove</button>
@@ -3186,6 +3257,13 @@ function renderProfile() {
     });
     sportsHost.querySelectorAll("[data-primary-sport]").forEach((btn) => {
       btn.addEventListener("click", () => setPrimarySport(btn.dataset.primarySport));
+    });
+    sportsHost.querySelectorAll("[data-sport-level]").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const row = profileSports().find((s) => s.id === sel.dataset.sportLevel);
+        if (row) row.level = sel.value;
+        safeRenderAll();
+      });
     });
     $("#profileAddSport")?.addEventListener("click", () => openSportPicker({ addMode: true }));
     window.Passport?.mount(sportsHost.closest(".card"));
@@ -3373,7 +3451,7 @@ function renderSportGrid() {
         const onProfile = mine.has(s.id);
         return `
     <button type="button" class="sport-option ${s.id === focusId() ? "selected" : ""}" data-sport="${s.id}" data-add="${addMode ? "1" : "0"}">
-      <img class="ico-3d" src="${s.icon}" alt="" />
+      <img class="ico-3d" src="${sportArt(s)}" alt="" />
       <span class="nm">${escapeHtml(s.name)}</span>
       <span class="meta">${escapeHtml(s.vibe)}${onProfile ? " · in your sports" : ""}${addMode && !onProfile ? " · tap to add" : ""}</span>
     </button>`;
